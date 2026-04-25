@@ -2,20 +2,22 @@ import Hyperswarm from 'hyperswarm'
 import { createTopicBuffer } from '@shut-the-box/shared'
 import { EventEmitter } from 'node:events'
 
-/**
- * Thin wrapper around Hyperswarm for topic-based peer discovery.
- * Emits: 'peer-connected', 'peer-disconnected', 'message'
- */
 export class SwarmManager extends EventEmitter {
-  constructor () {
+  constructor (core = null) {
     super()
     this.swarm = new Hyperswarm()
     this.peers = new Map()
     this.topic = null
+    this.core = core
 
     this.swarm.on('connection', (connection, peerInfo) => {
       const id = peerInfo.publicKey.toString('hex')
       this.peers.set(id, connection)
+
+      if (this.core) {
+        this.core.replicate(connection, { live: true })
+      }
+
       this.emit('peer-connected', id, connection)
 
       connection.on('data', (data) => {
@@ -27,7 +29,7 @@ export class SwarmManager extends EventEmitter {
         this.emit('peer-disconnected', id)
       })
 
-      connection.on('error', (err) => {
+      connection.on('error', () => {
         this.peers.delete(id)
         this.emit('peer-disconnected', id)
       })
