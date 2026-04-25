@@ -5,7 +5,7 @@ import { EventLog } from '../src/eventLog.js'
 import { MESSAGE_TYPES } from '../../../shared/src/types.js'
 
 test('EventLog appends and reads events in order', async () => {
-  const { core, db } = await createDatabase('./.test-storage-eventlog')
+  const { core, db } = await createDatabase('./data/test/eventlog')
   const log = new EventLog(db, 'match-1')
 
   await log.append({

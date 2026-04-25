@@ -1,7 +1,7 @@
 import Hypercore from 'hypercore'
 import Hyperbee from 'hyperbee'
 
-export async function createDatabase (storagePath = './.storage-db') {
+export async function createDatabase (storagePath = './data/matches/default') {
   const core = new Hypercore(storagePath)
   await core.ready()
 

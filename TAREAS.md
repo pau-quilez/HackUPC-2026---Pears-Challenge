@@ -95,49 +95,51 @@
   - Los módulos `hyperswarm`, `hypercore`, `hyperbee` están disponibles dentro de Pear de forma nativa
   - Se mantiene ESM en el proyecto para compatibilidad con workspaces Node.js; `hyperswarm` se importa por nombre de módulo (`import 'hyperswarm'`), válido en CLI y en Pear
 
-- [ ] **3.4 Reconexión y tolerancia a fallos**
-  - Detectar cuando un peer se desconecta inesperadamente
-  - Notificar al resto de jugadores
-  - Gestionar qué pasa si se desconecta el host (¿migrar host? ¿acabar partida?)
-  - Gestionar qué pasa si se desconecta un jugador a mitad de su turno (auto-skip)
-  - Añadir timeouts para evitar que la partida se quede colgada
+- [x] **3.4 Reconexión y tolerancia a fallos**
+  - `_handlePeerDisconnected()` detecta desconexión y emite `player-left`
+  - Si un jugador se desconecta en su turno, el `_opponentResolve` se resuelve y se salta su turno
+  - Ya no hay host, así que no hay migración de host — modelo simétrico
+  - Si quedan menos de `MIN_PLAYERS`, se aborta la partida con `game-aborted`
+  - `_abortDueToDisconnect()` desbloquea todos los resolvers pendientes
 
 ---
 
 ## TAREA 4: GameController (orquestación de la partida)
 
-> Actualmente el controlador está dentro de `apps/cli/index.js`, acoplado al terminal.
-> Hay que extraerlo para que sea reutilizable por CLI y Desktop.
+> `packages/game/src/controller.js` — módulo independiente, event-driven, cero I/O.
+> **Modelo simétrico: no hay host.** Cualquier jugador puede iniciar la partida.
 
-- [ ] **4.1 Extraer GameController a un módulo independiente**
-  - Mover la lógica de orquestación a `packages/game/src/controller.js` (o `packages/engine/`)
-  - El controller no debe depender de readline, console.log ni ningún I/O
-  - Debe emitir eventos que la UI (CLI o Desktop) escuche y renderice
-  - Debe recibir acciones de la UI (roll, shutTiles, startGame)
+- [x] **4.1 Extraer GameController a un módulo independiente**
+  - `packages/game/src/controller.js` — extiende EventEmitter, cero I/O
+  - Sin dependencia de readline, console.log ni ningún terminal
+  - Emite: `connected`, `lobby-updated`, `player-joined`, `player-left`, `game-started`, `round-start`, `my-turn`, `opponent-turn`, `roll-result`, `no-valid-moves`, `tiles-shut`, `round-done`, `shut-the-box`, `game-over`, `game-aborted`, `error`
+  - Acepta acciones: `connect(name, room, mode)`, `startGame()`, `roll()`, `shutTiles()`, `useHint()`
+  - `apps/cli/index.js` reescrito como adaptador fino (solo escucha eventos y llama acciones)
 
-- [ ] **4.2 Fase Lobby**
-  - Esperar a que se conecten jugadores (mínimo 2, máximo 4)
-  - Mostrar lista de jugadores conectados en tiempo real
-  - Solo el host puede iniciar la partida
-  - Validar que hay suficientes jugadores antes de empezar
+- [x] **4.2 Fase Lobby (simétrica)**
+  - Ya no hay distinción host/guest — todos los peers esperan en `_lobbyPhase()`
+  - Cualquier jugador puede llamar `startGame()` para iniciar la partida
+  - `startGame()` valida `MIN_PLAYERS` y `MAX_PLAYERS` antes de proceder
+  - Al iniciar, ordena jugadores por ID (`localeCompare`) para que todos tengan el mismo orden de turnos
+  - Los peers que reciben `GAME_START` adoptan el orden de jugadores del iniciador
 
-- [ ] **4.3 Fase Playing**
-  - Gestionar turnos secuenciales (jugador 1, 2, 3, 4, luego acaba)
-  - En tu turno: puedes tirar dados y elegir tiles
-  - En turno de otro: solo recibes y muestras sus acciones
-  - Sincronizar el estado entre todos los peers via mensajes
+- [x] **4.3 Fase Playing**
+  - `_gameLoop()` itera jugadores en orden secuencial por ronda
+  - Turno propio: `_playMyTurn()` bloquea con Promises hasta que la UI llama `roll()` y `shutTiles()`
+  - Turno ajeno: bloquea en `_opponentResolve` hasta recibir `TURN_END` del peer
+  - Si el oponente se desconecta durante su turno, el resolver se desbloquea automáticamente
+  - Estado sincronizado via mensajes: `DICE_ROLL`, `TILES_SHUT`, `TURN_END`
 
-- [ ] **4.4 Fase Finished**
-  - Calcular ranking: ordena jugadores por puntuación ascendente
-  - Declarar ganador (menor puntuación)
-  - Empate: ambos jugadores comparten la victoria
-  - El host envía `game-over` con los resultados finales
+- [x] **4.4 Fase Finished**
+  - `_finishGame()` ordena resultados por score ascendente
+  - Ganador = menor puntuación; empate si varios tienen el mismo score (`winnerId = null`)
+  - Todos los peers broadcast `game-over` con resultados (no solo uno)
+  - Se persiste el resultado con `MatchStore.saveMatch()` y `updateStats()` para cada jugador
 
-- [ ] **4.5 Fuente de verdad y anti-trampas**
-  - Decidir modelo: host-authoritative vs. todos validan localmente
-  - Modelo simple (actual): cada peer ejecuta la lógica localmente y confía en los mensajes
-  - Modelo robusto (futuro): el host valida cada jugada antes de aceptarla
-  - Para el hackathon: el modelo simple es suficiente
+- [x] **4.5 Fuente de verdad y anti-trampas**
+  - Modelo simple y simétrico: cada peer valida su propia jugada localmente y confía en los mensajes
+  - No hay host autoritativo — todos calculan su ranking local
+  - Suficiente para el hackathon; modelo robusto queda como mejora futura
 
 ---
 
@@ -164,10 +166,12 @@
   - Guardar/recuperar datos de una partida
   - Actualizar estadísticas de jugador (partidas jugadas, ganadas, mejor score)
 
-- [ ] **5.5 Integrar storage en el GameController**
-  - Al acabar una partida, guardar automáticamente el resultado en Hyperbee
-  - Actualizar estadísticas de cada jugador
-  - Registrar eventos durante la partida para tener historial
+- [x] **5.5 Integrar storage en el GameController**
+  - `_initStorage()` crea una Hyperbee local por partida (`matchId` único con `generateId()`)
+  - Eventos registrados: `GAME_START`, `DICE_ROLLED`, `TILES_SHUT`, `TURN_END`, `SHUT_THE_BOX`, `GAME_OVER`
+  - Al acabar: `saveMatch()` guarda resultado final con `winnerId`, `finishedAt` y ranking
+  - `updateStats()` actualiza `gamesPlayed`, `gamesWon`, `totalScore`, `bestScore` para cada jugador
+  - Guest también inicializa su propio storage local al recibir `GAME_START`
 
 - [ ] **5.6 Decidir replicación**
   - Solo local: cada peer guarda su propio historial (más simple)
@@ -329,26 +333,22 @@
 ```
 HECHO                          POR HACER
 ─────                          ─────────
-[████████████] T1 Game         [░░░░░░░░░░░░] T4 GameController (extraer)
-[████████████] T2 Mensajes     [░░░░░░░░░░░░] T6 Configurar Pear
-[████████░░░░] T3 P2P          [░░░░░░░░░░░░] T7 UI Desktop
-[████████░░░░] T5 Storage      [░░░░░░░░░░░░] T8 Testing integración
-                               [░░░░░░░░░░░░] T9 Deploy Pear
+[████████████] T1 Game         [░░░░░░░░░░░░] T6 Configurar Pear
+[████████████] T2 Mensajes     [░░░░░░░░░░░░] T7 UI Desktop
+[████████████] T3 P2P          [░░░░░░░░░░░░] T8 Testing integración
+[████████████] T4 Controller   [░░░░░░░░░░░░] T9 Deploy Pear
+[████████████] T5 Storage
 ```
 
 ## Orden recomendado de ejecución
 
-1. **T4** → Extraer GameController (desacoplar de CLI)
-2. **T6** → Configurar Pear Runtime
-3. **T3.3** → Adaptar P2P para Pear
-4. **T7.1-7.3** → UI básica (Lobby + Board + Dados)
-5. **T7.7** → Conectar UI con GameController
-6. **T8.4** → Test integración 2 peers
-7. **T7.4-7.6** → UI completa (panel jugadores, scoreboard, estilos)
-8. **T5.5** → Integrar storage
-9. **T3.4** → Reconexión y tolerancia a fallos
-10. **T8.5-8.6** → Tests avanzados
-11. **T9** → Deploy con Pear
+1. **T6** → Configurar Pear Runtime
+2. **T7.1-7.3** → UI básica (Lobby + Board + Dados)
+3. **T7.7** → Conectar UI con GameController
+4. **T8.4** → Test integración 2 peers
+5. **T7.4-7.6** → UI completa (panel jugadores, scoreboard, estilos)
+6. **T8.5-8.6** → Tests avanzados
+7. **T9** → Deploy con Pear
 
 ## Módulos Holepunch utilizados
 

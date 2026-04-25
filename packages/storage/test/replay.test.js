@@ -6,7 +6,7 @@ import { loadMatchState } from '../src/replay.js'
 import { MESSAGE_TYPES } from '../../../shared/src/types.js'
 
 test('Replay reconstructs match state', async () => {
-  const { core, db } = await createDatabase('./.test-replay')
+  const { core, db } = await createDatabase('./data/test/replay')
   const log = new EventLog(db, 'match-1')
 
   await log.append({

@@ -13,15 +13,16 @@ import {
 } from '@shut-the-box/shared'
 
 /**
- * GameController — orchestrates the full game lifecycle (tasks 4.1-4.5).
- * Zero I/O: no console.log, no readline.
- * The UI layer (CLI or Desktop) listens to events and calls actions.
+ * GameController — orchestrates the full game lifecycle.
+ *
+ * Symmetric model: there is NO host. Any player can start the game.
+ * All peers validate locally and trust incoming messages.
  *
  * ── EVENTS emitted ───────────────────────────────────────────────────
- *  'waiting'          ({ isHost })
+ *  'connected'        ({ myId })
  *  'lobby-updated'    ({ players })
  *  'player-joined'    ({ player, players })
- *  'player-left'      ({ peerId, players })
+ *  'player-left'      ({ player, players })
  *  'game-started'     ({ players, matchId })
  *  'round-start'      ({ round })
  *  'my-turn'          ({ player, round })
@@ -32,20 +33,17 @@ import {
  *  'tiles-shut'       ({ player, tiles, isMe })
  *  'round-done'       ({ player, openTiles, score, isMe })
  *  'shut-the-box'     ({ player, isMe })
- *  'game-over'        ({ results })          results sorted asc by score
+ *  'game-over'        ({ results })
+ *  'game-aborted'     ({ reason, results })
  *  'error'            ({ message })
  *
  * ── ACTIONS the UI calls ─────────────────────────────────────────────
- *  await controller.connect(name, roomName, asHost)
- *  controller.startGame()
+ *  await controller.connect(name, roomName, mode)   mode = 'create' | 'join'
+ *  controller.startGame()       — any player can call
  *  controller.roll()
  *  controller.shutTiles(tiles[])
- *  controller.useHint()   → returns combos[] or null
+ *  controller.useHint()         → returns combos[] or null
  *  await controller.destroy()
- *
- * ── READ-ONLY STATE ──────────────────────────────────────────────────
- *  controller.state  →  { phase, players, myId, isHost, round,
- *                         currentPlayerIndex, hintsRemaining }
  */
 export class GameController extends EventEmitter {
   constructor () {
@@ -55,44 +53,37 @@ export class GameController extends EventEmitter {
     this.players = []
     this.currentPlayerIndex = 0
     this.myId = null
-    this.isHost = false
     this.round = 0
     this.matchId = null
+    this._gameEnded = false
 
-    // Storage handles (initialized when game starts)
+    // Storage handles
     this._db = null
     this._dbCore = null
     this._eventLog = null
     this._matchStore = null
 
-    // Internal promise resolvers for async flow control
-    this._rollResolve = null       // resolved when UI calls roll()
-    this._shutResolve = null       // resolved when UI calls shutTiles()
-    this._opponentResolve = null   // resolved when opponent's turn-end arrives
-    this._startGameResolve = null  // resolved when host calls startGame()
-    this._guestStartResolve = null // resolved when game-start msg arrives
+    // Async flow resolvers
+    this._rollResolve = null
+    this._shutResolve = null
+    this._opponentResolve = null
+    this._startGameResolve = null
 
-    // Active Turn object (only set during our own turn, before tiles are shut)
     this._activeTurn = null
+    this._waitingTurnPeerId = null
   }
 
   // ──────────────────────────────────────────────────────────────────
   // Public API
   // ──────────────────────────────────────────────────────────────────
 
-  /** Connect to a P2P room and drive the full lifecycle. */
-  async connect (name, roomName, asHost) {
-    this.isHost = asHost
+  async connect (name, roomName, mode) {
     this.room = new Room(name)
 
     this.room.on('message', (msg) => this._handleMessage(msg))
-    this.room.on('peer-disconnected', (peerId) => {
-      this.players = this.players.filter(p => p.id !== peerId)
-      this.emit('player-left', { peerId, players: this.players })
-      this.emit('lobby-updated', { players: this.players })
-    })
+    this.room.on('peer-disconnected', (peerId) => this._handlePeerDisconnected(peerId))
 
-    if (asHost) {
+    if (mode === 'create') {
       await this.room.host(roomName)
     } else {
       await this.room.join(roomName)
@@ -101,26 +92,14 @@ export class GameController extends EventEmitter {
     this.myId = this.room.myId
     this.players.push(this._makePlayer(this.myId, name))
 
-    this.emit('waiting', { isHost: this.isHost })
+    this.emit('connected', { myId: this.myId })
+    this.emit('lobby-updated', { players: this.players })
 
-    if (asHost) {
-      // 4.2: Host waits in lobby until startGame() is called
-      await this._lobbyPhase()
-    } else {
-      // Guest waits for game-start message from host
-      await new Promise(resolve => { this._guestStartResolve = resolve })
-      await this._gameLoop()
-    }
+    // All players wait in lobby until someone calls startGame()
+    await this._lobbyPhase()
   }
 
-  /**
-   * 4.2: Host calls this to start the game.
-   * Validates min/max players before proceeding.
-   */
   startGame () {
-    if (!this.isHost) {
-      return this.emit('error', { message: 'Only the host can start the game' })
-    }
     if (this.phase !== GAME_PHASES.LOBBY) {
       return this.emit('error', { message: 'Game already started' })
     }
@@ -136,7 +115,6 @@ export class GameController extends EventEmitter {
     }
   }
 
-  /** 4.3: Roll dice — only valid during our turn, before tiles are selected. */
   roll () {
     if (!this._activeTurn) {
       return this.emit('error', { message: 'Not your turn' })
@@ -155,7 +133,6 @@ export class GameController extends EventEmitter {
     }
   }
 
-  /** 4.3: Shut tiles — only valid during our turn, after rolling. */
   shutTiles (tiles) {
     if (!this._activeTurn) {
       return this.emit('error', { message: 'Not your turn' })
@@ -177,7 +154,6 @@ export class GameController extends EventEmitter {
     }
   }
 
-  /** Returns valid combinations for the current roll, or null if no hints left. */
   useHint () {
     if (!this._activeTurn) {
       this.emit('error', { message: 'Not your turn' })
@@ -188,17 +164,17 @@ export class GameController extends EventEmitter {
 
   async destroy () {
     if (this._dbCore) {
-      await closeDatabase({ core: this._dbCore })
+      try { await closeDatabase({ core: this._dbCore }) } catch (_) {}
       this._db = null
       this._dbCore = null
     }
     if (this.room) {
-      await this.room.destroy()
+      try { await this.room.destroy() } catch (_) {}
     }
   }
 
   // ──────────────────────────────────────────────────────────────────
-  // Read-only state snapshot
+  // Read-only state
   // ──────────────────────────────────────────────────────────────────
 
   get state () {
@@ -206,7 +182,6 @@ export class GameController extends EventEmitter {
       phase: this.phase,
       players: this.players,
       myId: this.myId,
-      isHost: this.isHost,
       round: this.round,
       matchId: this.matchId,
       currentPlayerIndex: this.currentPlayerIndex,
@@ -215,7 +190,7 @@ export class GameController extends EventEmitter {
   }
 
   // ──────────────────────────────────────────────────────────────────
-  // Internal: player helpers
+  // Internal: helpers
   // ──────────────────────────────────────────────────────────────────
 
   _makePlayer (id, name) {
@@ -238,13 +213,24 @@ export class GameController extends EventEmitter {
     return this.players.every(p => p.finished || p.shutTheBox)
   }
 
+  _buildResults () {
+    return this.players
+      .map(p => ({
+        id: p.id,
+        name: p.name,
+        score: p.shutTheBox ? 0 : calculateScore(p.openTiles),
+        shutTheBox: p.shutTheBox
+      }))
+      .sort((a, b) => a.score - b.score)
+  }
+
   // ──────────────────────────────────────────────────────────────────
   // Internal: storage
   // ──────────────────────────────────────────────────────────────────
 
   async _initStorage () {
     this.matchId = generateId()
-    const storagePath = `./.storage-${this.matchId.slice(0, 8)}`
+    const storagePath = `./data/matches/${this.matchId.slice(0, 8)}`
     const { core, db } = await createDatabase(storagePath)
     this._dbCore = core
     this._db = db
@@ -260,11 +246,16 @@ export class GameController extends EventEmitter {
   }
 
   // ──────────────────────────────────────────────────────────────────
-  // Internal: 4.2 Lobby phase
+  // Internal: lobby — symmetric, any player can start
   // ──────────────────────────────────────────────────────────────────
 
   async _lobbyPhase () {
     await new Promise(resolve => { this._startGameResolve = resolve })
+
+    if (this.phase !== GAME_PHASES.LOBBY) return
+
+    // Sort players by ID so every peer has the same turn order
+    this.players.sort((a, b) => a.id.localeCompare(b.id))
 
     this.phase = GAME_PHASES.PLAYING
     this.room.broadcast(msgGameStart(this.myId, {
@@ -289,15 +280,17 @@ export class GameController extends EventEmitter {
   }
 
   // ──────────────────────────────────────────────────────────────────
-  // Internal: 4.3 Playing phase — round loop
+  // Internal: game loop
   // ──────────────────────────────────────────────────────────────────
 
   async _gameLoop () {
-    while (!this._allPlayersFinished()) {
+    while (this.phase === GAME_PHASES.PLAYING && !this._allPlayersFinished()) {
       this.round++
       this.emit('round-start', { round: this.round })
 
       for (let i = 0; i < this.players.length; i++) {
+        if (this.phase !== GAME_PHASES.PLAYING) break
+
         this.currentPlayerIndex = i
         const player = this.players[i]
 
@@ -309,32 +302,35 @@ export class GameController extends EventEmitter {
         if (player.id === this.myId) {
           await this._playMyTurn(player)
         } else {
-          // 4.3: In opponent's turn, just receive and display their actions
           this.emit('opponent-turn', { player, round: this.round })
+          this._waitingTurnPeerId = player.id
           await new Promise(resolve => { this._opponentResolve = resolve })
+          this._waitingTurnPeerId = null
         }
       }
+
+      if (this.phase !== GAME_PHASES.PLAYING) break
     }
 
-    // 4.4: All players done — compute ranking
+    if (this._gameEnded) return
+    if (this.phase !== GAME_PHASES.PLAYING && !this._allPlayersFinished()) return
+
     await this._finishGame()
   }
 
   // ──────────────────────────────────────────────────────────────────
-  // Internal: 4.3 My turn
+  // Internal: my turn
   // ──────────────────────────────────────────────────────────────────
 
   async _playMyTurn (player) {
     this._activeTurn = new Turn(player.openTiles, player.hintsRemaining)
     this.emit('my-turn', { player, round: this.round })
 
-    // Wait for UI to call roll()
     await new Promise(resolve => { this._rollResolve = resolve })
     const roll = this._activeTurn.lastRoll
     await this._logEvent('DICE_ROLLED', { values: roll.values, total: roll.total, count: roll.count })
 
     if (!this._activeTurn.canMove()) {
-      // No valid combinations — player is eliminated from further rounds
       this.emit('no-valid-moves', { player, isMe: true })
       player.finished = true
       const result = this._activeTurn.endTurn()
@@ -345,11 +341,9 @@ export class GameController extends EventEmitter {
       return
     }
 
-    // Wait for UI to call shutTiles()
     await new Promise(resolve => { this._shutResolve = resolve })
-    const tiles = this._activeTurn.openTiles  // already updated inside shutTiles()
 
-    await this._logEvent('TILES_SHUT', { tiles })
+    await this._logEvent('TILES_SHUT', { tiles: this._activeTurn.openTiles })
 
     const result = this._activeTurn.endTurn()
     this._applyTurnResult(player, result)
@@ -374,60 +368,97 @@ export class GameController extends EventEmitter {
   }
 
   // ──────────────────────────────────────────────────────────────────
-  // Internal: 4.4 Finished phase
+  // Internal: finish
   // ──────────────────────────────────────────────────────────────────
 
   async _finishGame () {
+    if (this._gameEnded) return
+    this._gameEnded = true
     this.phase = GAME_PHASES.FINISHED
 
-    // 4.4: Sort by score asc; ties share the same rank
-    const results = this.players
-      .map(p => ({
-        id: p.id,
-        name: p.name,
-        score: p.shutTheBox ? 0 : calculateScore(p.openTiles),
-        shutTheBox: p.shutTheBox
-      }))
-      .sort((a, b) => a.score - b.score)
+    const results = this._buildResults()
 
-    // 4.4: Declare winner(s) — the one(s) with lowest score
     const winnerScore = results[0].score
     const winners = results.filter(r => r.score === winnerScore)
-    const winnerId = winners.length === 1 ? winners[0].id : null  // null = tie
+    const winnerId = winners.length === 1 ? winners[0].id : null
 
-    // Persist final match data and player stats
     await this._logEvent('GAME_OVER', { results })
     if (this._matchStore) {
       await this._matchStore.saveMatch(this.matchId, {
         players: this.players.map(p => ({ id: p.id, name: p.name })),
-        startedAt: this._matchStore._startedAt,
+        startedAt: timestamp(),
         finishedAt: timestamp(),
         winnerId,
         results
       })
-      // 4.4: Update stats for every player
       for (const r of results) {
         const won = winners.some(w => w.id === r.id)
         await this._matchStore.updateStats(r.id, r.score, won)
       }
     }
 
-    // 4.5: Host sends authoritative game-over to all peers
-    if (this.isHost) {
-      this.room.broadcast(msgGameOver(this.myId, results))
-    }
-
+    this.room.broadcast(msgGameOver(this.myId, results))
     this.emit('game-over', { results })
     await this.destroy()
   }
 
   // ──────────────────────────────────────────────────────────────────
-  // Internal: incoming message handler
+  // Internal: peer disconnection (failure tolerance)
+  // ──────────────────────────────────────────────────────────────────
+
+  _handlePeerDisconnected (peerId) {
+    const index = this.players.findIndex(p => p.id === peerId)
+    if (index === -1) return
+
+    const [removed] = this.players.splice(index, 1)
+    this.emit('player-left', { player: removed, players: this.players })
+
+    if (this.phase === GAME_PHASES.LOBBY) {
+      this.emit('lobby-updated', { players: this.players })
+      return
+    }
+
+    // Adjust turn pointer if needed
+    if (index <= this.currentPlayerIndex && this.currentPlayerIndex > 0) {
+      this.currentPlayerIndex--
+    }
+
+    // If we were waiting for this peer's turn, skip it
+    if (this._waitingTurnPeerId === peerId && this._opponentResolve) {
+      this._opponentResolve()
+      this._opponentResolve = null
+    }
+
+    // If not enough players remain, abort the game
+    if (this.phase === GAME_PHASES.PLAYING && this.players.length < MIN_PLAYERS) {
+      this._abortDueToDisconnect()
+    }
+  }
+
+  _abortDueToDisconnect () {
+    if (this._gameEnded) return
+    this._gameEnded = true
+    this.phase = GAME_PHASES.FINISHED
+
+    const results = this._buildResults()
+
+    // Unblock any pending resolvers
+    if (this._opponentResolve) { this._opponentResolve(); this._opponentResolve = null }
+    if (this._rollResolve) { this._rollResolve(null); this._rollResolve = null }
+    if (this._shutResolve) { this._shutResolve(null); this._shutResolve = null }
+
+    this.emit('game-aborted', {
+      reason: `Not enough players (minimum ${MIN_PLAYERS})`,
+      results
+    })
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Internal: incoming messages
   // ──────────────────────────────────────────────────────────────────
 
   _handleMessage (msg) {
     switch (msg.type) {
-      // 4.2: A new player announces themselves in the lobby
       case MSG_TYPES.PLAYER_JOIN: {
         if (!this.players.find(p => p.id === msg.from)) {
           const player = this._makePlayer(msg.from, msg.payload.name)
@@ -438,33 +469,45 @@ export class GameController extends EventEmitter {
         break
       }
 
-      // 4.2: Host broadcast — game is starting
       case MSG_TYPES.GAME_START: {
-        this.phase = GAME_PHASES.PLAYING
-        for (const sp of msg.payload.players) {
-          if (!this.players.find(p => p.id === sp.id)) {
-            this.players.push(this._makePlayer(sp.id, sp.name))
+        if (this.phase === GAME_PHASES.LOBBY) {
+          this.phase = GAME_PHASES.PLAYING
+
+          // Adopt the player order from whoever started the game
+          const serverPlayers = msg.payload.players
+          const ordered = []
+          for (const sp of serverPlayers) {
+            let existing = this.players.find(p => p.id === sp.id)
+            if (!existing) {
+              existing = this._makePlayer(sp.id, sp.name)
+            }
+            ordered.push(existing)
           }
-        }
-        // Guest: initialize own local storage and resolve the wait
-        this._initStorage().then(() => {
-          this._matchStore.saveMatch(this.matchId, {
-            players: this.players.map(p => ({ id: p.id, name: p.name })),
-            startedAt: timestamp()
+          this.players = ordered
+
+          // Initialize local storage
+          this._initStorage().then(() => {
+            this._matchStore.saveMatch(this.matchId, {
+              players: this.players.map(p => ({ id: p.id, name: p.name })),
+              startedAt: timestamp()
+            })
+            this._logEvent('GAME_START', {
+              players: this.players.map(p => ({ id: p.id, name: p.name }))
+            })
           })
-          this._logEvent('GAME_START', {
-            players: this.players.map(p => ({ id: p.id, name: p.name }))
-          })
-        })
-        this.emit('game-started', { players: this.players, matchId: this.matchId })
-        if (this._guestStartResolve) {
-          this._guestStartResolve()
-          this._guestStartResolve = null
+
+          this.emit('game-started', { players: this.players, matchId: this.matchId })
+
+          // Resolve lobby wait and start game loop
+          if (this._startGameResolve) {
+            // Prevent the resolver from re-broadcasting game-start
+            this._startGameResolve = null
+          }
+          this._startGame().then(() => this._gameLoop())
         }
         break
       }
 
-      // 4.3: Opponent rolled dice
       case MSG_TYPES.DICE_ROLL: {
         if (msg.from !== this.myId) {
           const player = this.players.find(p => p.id === msg.from)
@@ -475,7 +518,6 @@ export class GameController extends EventEmitter {
         break
       }
 
-      // 4.3: Opponent shut tiles — update their local board
       case MSG_TYPES.TILES_SHUT: {
         if (msg.from !== this.myId) {
           const player = this.players.find(p => p.id === msg.from)
@@ -487,7 +529,6 @@ export class GameController extends EventEmitter {
         break
       }
 
-      // 4.3/4.4: Opponent's turn ended — update state and unblock our loop
       case MSG_TYPES.TURN_END: {
         if (msg.from !== this.myId) {
           const player = this.players.find(p => p.id === msg.from)
@@ -514,11 +555,12 @@ export class GameController extends EventEmitter {
         break
       }
 
-      // 4.4: Host sent final results — non-host peers display scoreboard
       case MSG_TYPES.GAME_OVER: {
         if (this.phase !== GAME_PHASES.FINISHED) {
           this.phase = GAME_PHASES.FINISHED
+          this._gameEnded = true
           this.emit('game-over', { results: msg.payload.results })
+          if (this._opponentResolve) { this._opponentResolve(); this._opponentResolve = null }
         }
         break
       }

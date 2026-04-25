@@ -4,9 +4,8 @@ dist/
 Thumbs.db
 *.log
 
-# Hypercore storage (local peer data)
-.storage-*/
-storage-*/
+# Local storage (Hypercore/Hyperbee data)
+data/
 
 # IDE
 .vscode/
@@ -27,10 +26,3 @@ ehthumbs.db
 
 # TODO file (personal notes)
 TODO
-
-# test storage
-.test-matchstore/
-.test-replay/
-.test-storage-eventlog/
-.test-storage-matchstore/
-.test-storage-replay/
