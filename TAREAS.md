@@ -89,11 +89,11 @@
   - Al conectar un nuevo peer, se envía automáticamente un `player-join`
   - Mantiene un Map de jugadores conocidos (peerId → playerName)
 
-- [ ] **3.3 Compatibilidad con Pear Runtime**
+- [x] **3.3 Compatibilidad con Pear Runtime**
   - Pear usa el module system de Bare (`require()`) en vez de Node.js ESM (`import/export`)
-  - Evaluar si la versión actual de Pear soporta ESM o si hay que convertir a CommonJS
+  - Evaluado: Bare/Pear actual soporta CJS y ESM con interoperabilidad, no es necesario convertir todo a CommonJS
   - Los módulos `hyperswarm`, `hypercore`, `hyperbee` están disponibles dentro de Pear de forma nativa
-  - Adaptar los imports si es necesario para que funcionen tanto en Node.js (CLI) como en Pear (desktop)
+  - Se mantiene ESM en el proyecto para compatibilidad con workspaces Node.js; `hyperswarm` se importa por nombre de módulo (`import 'hyperswarm'`), válido en CLI y en Pear
 
 - [ ] **3.4 Reconexión y tolerancia a fallos**
   - Detectar cuando un peer se desconecta inesperadamente

@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { SwarmManager } from './swarm.js'
-import { parseMessage, msgPlayerJoin, msgGameState } from './messages.js'
+import { parseMessage, msgPlayerJoin } from './messages.js'
 import { shortId } from '@shut-the-box/shared'
 
 /**
