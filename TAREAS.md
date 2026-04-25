@@ -95,48 +95,50 @@
   - Los módulos `hyperswarm`, `hypercore`, `hyperbee` están disponibles dentro de Pear de forma nativa
   - Se mantiene ESM en el proyecto para compatibilidad con workspaces Node.js; `hyperswarm` se importa por nombre de módulo (`import 'hyperswarm'`), válido en CLI y en Pear
 
-- [ ] **3.4 Reconexión y tolerancia a fallos**
-  - Detectar cuando un peer se desconecta inesperadamente
-  - Notificar al resto de jugadores
-  - Gestionar qué pasa si se desconecta el host (¿migrar host? ¿acabar partida?)
-  - Gestionar qué pasa si se desconecta un jugador a mitad de su turno (auto-skip)
-  - Añadir timeouts para evitar que la partida se quede colgada
+- [x] **3.4 Reconexión y tolerancia a fallos**
+  - `_handlePeerDisconnected()` detecta desconexión y emite `player-left`
+  - Si un jugador se desconecta en su turno, el `_opponentResolve` se resuelve y se salta su turno
+  - Ya no hay host, así que no hay migración de host — modelo simétrico
+  - Si quedan menos de `MIN_PLAYERS`, se aborta la partida con `game-aborted`
+  - `_abortDueToDisconnect()` desbloquea todos los resolvers pendientes
 
 ---
 
 ## TAREA 4: GameController (orquestación de la partida)
 
-> Actualmente el controlador está dentro de `apps/cli/index.js`, acoplado al terminal.
-> Hay que extraerlo para que sea reutilizable por CLI y Desktop.
+> `packages/game/src/controller.js` — módulo independiente, event-driven, cero I/O.
+> **Modelo simétrico: no hay host.** Cualquier jugador puede iniciar la partida.
 
 - [x] **4.1 Extraer GameController a un módulo independiente**
   - `packages/game/src/controller.js` — extiende EventEmitter, cero I/O
   - Sin dependencia de readline, console.log ni ningún terminal
-  - Emite: `waiting`, `lobby-updated`, `player-joined`, `game-started`, `round-start`, `my-turn`, `opponent-turn`, `roll-result`, `no-valid-moves`, `tiles-shut`, `round-done`, `shut-the-box`, `game-over`, `error`
-  - Acepta acciones: `connect()`, `startGame()`, `roll()`, `shutTiles()`, `useHint()`
+  - Emite: `connected`, `lobby-updated`, `player-joined`, `player-left`, `game-started`, `round-start`, `my-turn`, `opponent-turn`, `roll-result`, `no-valid-moves`, `tiles-shut`, `round-done`, `shut-the-box`, `game-over`, `game-aborted`, `error`
+  - Acepta acciones: `connect(name, room, mode)`, `startGame()`, `roll()`, `shutTiles()`, `useHint()`
   - `apps/cli/index.js` reescrito como adaptador fino (solo escucha eventos y llama acciones)
 
-- [x] **4.2 Fase Lobby**
-  - Host espera en `_lobbyPhase()` hasta que la UI llame `startGame()`
-  - Emite `player-joined` y `lobby-updated` en tiempo real cuando llega un peer
-  - `startGame()` valida `isHost`, `MIN_PLAYERS` y `MAX_PLAYERS` antes de proceder
-  - Guest espera `GAME_START` del host via `_guestStartResolve`
+- [x] **4.2 Fase Lobby (simétrica)**
+  - Ya no hay distinción host/guest — todos los peers esperan en `_lobbyPhase()`
+  - Cualquier jugador puede llamar `startGame()` para iniciar la partida
+  - `startGame()` valida `MIN_PLAYERS` y `MAX_PLAYERS` antes de proceder
+  - Al iniciar, ordena jugadores por ID (`localeCompare`) para que todos tengan el mismo orden de turnos
+  - Los peers que reciben `GAME_START` adoptan el orden de jugadores del iniciador
 
 - [x] **4.3 Fase Playing**
   - `_gameLoop()` itera jugadores en orden secuencial por ronda
   - Turno propio: `_playMyTurn()` bloquea con Promises hasta que la UI llama `roll()` y `shutTiles()`
   - Turno ajeno: bloquea en `_opponentResolve` hasta recibir `TURN_END` del peer
+  - Si el oponente se desconecta durante su turno, el resolver se desbloquea automáticamente
   - Estado sincronizado via mensajes: `DICE_ROLL`, `TILES_SHUT`, `TURN_END`
 
 - [x] **4.4 Fase Finished**
   - `_finishGame()` ordena resultados por score ascendente
   - Ganador = menor puntuación; empate si varios tienen el mismo score (`winnerId = null`)
-  - Host emite `game-over` con resultados a todos los peers
-  - Peers no-host reciben `GAME_OVER` y emiten el evento local
+  - Todos los peers broadcast `game-over` con resultados (no solo uno)
+  - Se persiste el resultado con `MatchStore.saveMatch()` y `updateStats()` para cada jugador
 
 - [x] **4.5 Fuente de verdad y anti-trampas**
-  - Modelo simple: cada peer valida su propia jugada localmente y confía en los mensajes
-  - El host envía el `game-over` final autoritativo con el ranking calculado localmente
+  - Modelo simple y simétrico: cada peer valida su propia jugada localmente y confía en los mensajes
+  - No hay host autoritativo — todos calculan su ranking local
   - Suficiente para el hackathon; modelo robusto queda como mejora futura
 
 ---
@@ -331,26 +333,22 @@
 ```
 HECHO                          POR HACER
 ─────                          ─────────
-[████████████] T1 Game         [░░░░░░░░░░░░] T4 GameController (extraer)
-[████████████] T2 Mensajes     [░░░░░░░░░░░░] T6 Configurar Pear
-[████████░░░░] T3 P2P          [░░░░░░░░░░░░] T7 UI Desktop
-[████████░░░░] T5 Storage      [░░░░░░░░░░░░] T8 Testing integración
-                               [░░░░░░░░░░░░] T9 Deploy Pear
+[████████████] T1 Game         [░░░░░░░░░░░░] T6 Configurar Pear
+[████████████] T2 Mensajes     [░░░░░░░░░░░░] T7 UI Desktop
+[████████████] T3 P2P          [░░░░░░░░░░░░] T8 Testing integración
+[████████████] T4 Controller   [░░░░░░░░░░░░] T9 Deploy Pear
+[████████████] T5 Storage
 ```
 
 ## Orden recomendado de ejecución
 
-1. **T4** → Extraer GameController (desacoplar de CLI)
-2. **T6** → Configurar Pear Runtime
-3. **T3.3** → Adaptar P2P para Pear
-4. **T7.1-7.3** → UI básica (Lobby + Board + Dados)
-5. **T7.7** → Conectar UI con GameController
-6. **T8.4** → Test integración 2 peers
-7. **T7.4-7.6** → UI completa (panel jugadores, scoreboard, estilos)
-8. **T5.5** → Integrar storage
-9. **T3.4** → Reconexión y tolerancia a fallos
-10. **T8.5-8.6** → Tests avanzados
-11. **T9** → Deploy con Pear
+1. **T6** → Configurar Pear Runtime
+2. **T7.1-7.3** → UI básica (Lobby + Board + Dados)
+3. **T7.7** → Conectar UI con GameController
+4. **T8.4** → Test integración 2 peers
+5. **T7.4-7.6** → UI completa (panel jugadores, scoreboard, estilos)
+6. **T8.5-8.6** → Tests avanzados
+7. **T9** → Deploy con Pear
 
 ## Módulos Holepunch utilizados
 
