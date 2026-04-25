@@ -5,6 +5,17 @@ let runningConnect = false
 let GameControllerClass = null
 const NUM_TILES = 12
 const PLAYER_COLOR_CLASSES = ['color-yellow', 'color-red', 'color-green', 'color-blue']
+const DICE_ANIMATION_MS = 1500
+const DICE_FACE_ROTATIONS = {
+	1: { x: 0, y: 0 },
+	2: { x: 90, y: 0 },
+	3: { x: 0, y: -90 },
+	4: { x: 0, y: 90 },
+	5: { x: -90, y: 0 },
+	6: { x: 0, y: 180 }
+}
+
+let diceAnimationTimer = null
 
 const ui = {
 	screen: 'connect',
@@ -20,6 +31,13 @@ const ui = {
 	canSelectTiles: false,
 	selectedTiles: [],
 	lastRoll: null,
+	diceRolling: false,
+	diceSingleMode: false,
+	diceFaces: [1, 1],
+	diceRotations: [
+		{ x: 0, y: 0 },
+		{ x: 0, y: 0 }
+	],
 	noMoreMovesNotice: '',
 	status: '',
 	error: '',
@@ -58,6 +76,88 @@ function resetTurnUiState () {
 
 function setStatus (message) {
 	ui.status = message
+}
+
+function normalizeDieValue (value) {
+	const n = Number(value)
+	if (Number.isNaN(n) || n < 1 || n > 6) return 1
+	return n
+}
+
+function nextDiceRotation (current, target) {
+	return Math.ceil(current / 360) * 360 + 1440 + target
+}
+
+function animateDice (values) {
+	const first = normalizeDieValue(values?.[0])
+	const second = normalizeDieValue(values?.[1] ?? 1)
+	const firstTarget = DICE_FACE_ROTATIONS[first]
+	const secondTarget = DICE_FACE_ROTATIONS[second]
+	const [firstRot, secondRot] = ui.diceRotations
+
+	if (diceAnimationTimer) {
+		clearTimeout(diceAnimationTimer)
+		diceAnimationTimer = null
+	}
+
+	ui.diceFaces = [first, second]
+	ui.diceSingleMode = values.length < 2
+	ui.diceRolling = true
+	ui.diceRotations = [
+		{
+			x: nextDiceRotation(firstRot.x, firstTarget.x),
+			y: nextDiceRotation(firstRot.y, firstTarget.y)
+		},
+		{
+			x: nextDiceRotation(secondRot.x, secondTarget.x),
+			y: nextDiceRotation(secondRot.y, secondTarget.y)
+		}
+	]
+
+	render()
+
+	diceAnimationTimer = setTimeout(() => {
+		ui.diceRolling = false
+		diceAnimationTimer = null
+		render()
+	}, DICE_ANIMATION_MS)
+}
+
+function renderDiceFaceDots (value) {
+	const dotMap = {
+		1: ['dot-center'],
+		2: ['dot-top-left', 'dot-bottom-right'],
+		3: ['dot-top-left', 'dot-center', 'dot-bottom-right'],
+		4: ['dot-top-left', 'dot-top-right', 'dot-bottom-left', 'dot-bottom-right'],
+		5: ['dot-top-left', 'dot-top-right', 'dot-center', 'dot-bottom-left', 'dot-bottom-right'],
+		6: ['dot-top-left', 'dot-top-right', 'dot-middle-left', 'dot-middle-right', 'dot-bottom-left', 'dot-bottom-right']
+	}
+
+	return dotMap[value].map(dotClass => `<span class="dot ${dotClass}"></span>`).join('')
+}
+
+function renderDiceCube (rotation, dimmed = false) {
+	const className = `dice-cube ${dimmed ? 'dimmed' : ''}`.trim()
+	return `
+		<div class="${className}" style="transform: rotateX(${rotation.x}deg) rotateY(${rotation.y}deg);">
+			<div class="dice-face face-1">${renderDiceFaceDots(1)}</div>
+			<div class="dice-face face-2">${renderDiceFaceDots(2)}</div>
+			<div class="dice-face face-3">${renderDiceFaceDots(3)}</div>
+			<div class="dice-face face-4">${renderDiceFaceDots(4)}</div>
+			<div class="dice-face face-5">${renderDiceFaceDots(5)}</div>
+			<div class="dice-face face-6">${renderDiceFaceDots(6)}</div>
+		</div>
+	`
+}
+
+function renderDiceScene () {
+	const [firstRot, secondRot] = ui.diceRotations
+	return `
+		<div class="dice-scene ${ui.diceRolling ? 'rolling' : ''}">
+			${renderDiceCube(firstRot, false)}
+			${renderDiceCube(secondRot, ui.diceSingleMode)}
+		</div>
+	`
 }
 
 async function loadGameControllerClass () {
@@ -139,6 +239,7 @@ function wireControllerEvents () {
 
 	controller.on('roll-result', ({ player, roll, isMe }) => {
 		ui.lastRoll = roll
+		animateDice(roll.values)
 		if (isMe) {
 			setStatus(`You rolled ${roll.values.join(' + ')} = ${roll.total}`)
 		} else {
@@ -326,11 +427,24 @@ async function onLeaveGame () {
 		canSelectTiles: false,
 		selectedTiles: [],
 		lastRoll: null,
+		diceRolling: false,
+		diceSingleMode: false,
+		diceFaces: [1, 1],
+		diceRotations: [
+			{ x: 0, y: 0 },
+			{ x: 0, y: 0 }
+		],
 		noMoreMovesNotice: '',
 		status: '',
 		error: '',
 		results: []
 	})
+
+	if (diceAnimationTimer) {
+		clearTimeout(diceAnimationTimer)
+		diceAnimationTimer = null
+	}
+
 	render()
 }
 
@@ -432,6 +546,7 @@ function renderGameView () {
 			</div>
 
 			<div class="roll-panel">
+				${renderDiceScene()}
 				<span>Roll:</span>
 				<strong>${ui.lastRoll ? `${ui.lastRoll.values.join(' + ')} = ${ui.lastRoll.total}` : '-'}</strong>
 				<span>Selected sum:</span>
