@@ -9,6 +9,9 @@
     "apps/*"
   ],
   "scripts": {
+    "postinstall": "node scripts/ensure-desktop-node-modules.cjs",
+    "dev:desktop": "node scripts/dev-pear-desktop.cjs",
+    "dev:desktop:only": "pear run --dev apps/desktop",
     "cli": "node apps/cli/index.js",
     "cli:host": "node apps/cli/index.js --host",
     "cli:join": "node apps/cli/index.js --join",

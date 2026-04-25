@@ -6,7 +6,7 @@
   "pear": {
     "name": "shut-the-box",
     "type": "desktop",
-    "pre": "pear-electron/pre"
+    "pre": "./node_modules/pear-electron/pre.js"
   },
   "dependencies": {
     "b4a": "^1.6.7",
