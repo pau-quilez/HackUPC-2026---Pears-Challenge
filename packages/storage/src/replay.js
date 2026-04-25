@@ -1,4 +1,5 @@
-import { EventLog } from './eventLog.js'
+import { EventLog } from './eventLog.js'  // FIXED: import EventLog
+
 export async function loadMatchState (db, matchId) {
   const log = new EventLog(db, matchId)
   const events = await log.getAll()
@@ -61,7 +62,6 @@ export function applyEvent (state, event) {
         turnState: 'done'
       }
 
-    // add more cases as needed...
     default:
       return state
   }
