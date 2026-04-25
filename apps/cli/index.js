@@ -6,9 +6,9 @@ import {
   msgPlayerReady, msgGameStart, msgDiceRoll,
   msgTilesShut, msgTurnEnd, msgGameOver
 } from '@shut-the-box/p2p'
-import { Turn, createBoard, calculateScore, findValidCombinations } from '@shut-the-box/game'
+import { Turn, createBoard, calculateScore } from '@shut-the-box/game'
 import {
-  GAME_PHASES, TURN_STATES, MSG_TYPES,
+  GAME_PHASES, MSG_TYPES, NUM_TILES, MAX_HINTS,
   MIN_PLAYERS, MAX_PLAYERS, shortId
 } from '@shut-the-box/shared'
 
@@ -20,13 +20,14 @@ const isHost = args.includes('--host')
 const isJoin = args.includes('--join')
 
 function printBoard (openTiles) {
-  const tiles = []
-  for (let i = 1; i <= 9; i++) {
-    tiles.push(openTiles.includes(i) ? ` ${i} ` : ' X ')
+  const cells = []
+  for (let i = 1; i <= NUM_TILES; i++) {
+    cells.push(openTiles.includes(i) ? (i < 10 ? ` ${i} ` : `${i} `) : ' X ')
   }
-  console.log('┌───┬───┬───┬───┬───┬───┬───┬───┬───┐')
-  console.log('│' + tiles.join('│') + '│')
-  console.log('└───┴───┴───┴───┴───┴───┴───┴───┴───┘')
+  const border = cells.map(() => '───')
+  console.log('┌' + border.join('┬') + '┐')
+  console.log('│' + cells.join('│') + '│')
+  console.log('└' + border.join('┴') + '┘')
 }
 
 function printScoreboard (players) {
@@ -46,21 +47,13 @@ class GameController {
     this.phase = GAME_PHASES.LOBBY
     this.players = []
     this.currentPlayerIndex = 0
-    this.turn = null
     this.myId = null
     this.isHost = false
-  }
-
-  isMyTurn () {
-    return this.players[this.currentPlayerIndex]?.id === this.myId
+    this.round = 0
   }
 
   getMyPlayer () {
     return this.players.find(p => p.id === this.myId)
-  }
-
-  getCurrentPlayer () {
-    return this.players[this.currentPlayerIndex]
   }
 
   async start () {
@@ -84,9 +77,9 @@ class GameController {
       name,
       openTiles: createBoard(),
       score: 0,
-      ready: false,
       finished: false,
-      shutTheBox: false
+      shutTheBox: false,
+      hintsRemaining: MAX_HINTS
     })
 
     console.log(`\nWaiting for players... (${this.isHost ? 'you are the host' : 'waiting for host to start'})`)
@@ -138,9 +131,9 @@ class GameController {
             name: msg.payload.name,
             openTiles: createBoard(),
             score: 0,
-            ready: false,
             finished: false,
-            shutTheBox: false
+            shutTheBox: false,
+            hintsRemaining: MAX_HINTS
           })
           console.log(`\n>>> ${msg.payload.name} joined the room!`)
         }
@@ -157,9 +150,9 @@ class GameController {
               name: sp.name,
               openTiles: createBoard(),
               score: 0,
-              ready: false,
               finished: false,
-              shutTheBox: false
+              shutTheBox: false,
+              hintsRemaining: MAX_HINTS
             })
           }
         }
@@ -197,14 +190,17 @@ class GameController {
         if (msg.from !== this.myId) {
           const player = this.players.find(p => p.id === msg.from)
           if (player) {
+            player.openTiles = msg.payload.openTiles
             player.score = msg.payload.score
-            player.finished = true
+            player.finished = msg.payload.finished || false
             player.shutTheBox = msg.payload.shutTheBox
             const name = player.name
             if (msg.payload.shutTheBox) {
               console.log(`\n*** ${name} SHUT THE BOX! Score: 0 ***`)
+            } else if (msg.payload.finished) {
+              console.log(`\n${name} has no valid moves. Score so far: ${msg.payload.score}`)
             } else {
-              console.log(`\n${name}'s turn ended. Score: ${msg.payload.score}`)
+              console.log(`\n${name}'s round ended. Open tiles: [${msg.payload.openTiles.join(', ')}]`)
             }
           }
         }
@@ -220,18 +216,33 @@ class GameController {
     }
   }
 
-  async gameLoop () {
-    for (let i = 0; i < this.players.length; i++) {
-      this.currentPlayerIndex = i
-      const player = this.players[i]
+  allPlayersFinished () {
+    return this.players.every(p => p.finished || p.shutTheBox)
+  }
 
-      if (player.id === this.myId) {
-        console.log(`\n=== YOUR TURN (${player.name}) ===`)
-        await this.playMyTurn(player)
-      } else {
-        console.log(`\n=== ${player.name}'s turn ===`)
-        console.log('Waiting for their moves...')
-        await this.waitForTurnEnd(player)
+  async gameLoop () {
+    // Rounds continue until all players are finished (no valid moves or shut the box)
+    while (!this.allPlayersFinished()) {
+      this.round++
+      console.log(`\n========== ROUND ${this.round} ==========`)
+
+      for (let i = 0; i < this.players.length; i++) {
+        this.currentPlayerIndex = i
+        const player = this.players[i]
+
+        if (player.finished || player.shutTheBox) {
+          console.log(`\n${player.name} is already done (score: ${player.score}).`)
+          continue
+        }
+
+        if (player.id === this.myId) {
+          console.log(`\n=== YOUR TURN (${player.name}) === [Round ${this.round}]`)
+          await this.playMyTurn(player)
+        } else {
+          console.log(`\n=== ${player.name}'s turn === [Round ${this.round}]`)
+          console.log('Waiting for their move...')
+          await this.waitForTurnEnd(player)
+        }
       }
     }
 
@@ -239,7 +250,7 @@ class GameController {
     const results = this.players.map(p => ({
       id: p.id,
       name: p.name,
-      score: p.score,
+      score: p.shutTheBox ? 0 : calculateScore(p.openTiles),
       shutTheBox: p.shutTheBox
     }))
 
@@ -254,40 +265,54 @@ class GameController {
   }
 
   async playMyTurn (player) {
-    const turn = new Turn(player.openTiles)
+    const turn = new Turn(player.openTiles, player.hintsRemaining)
 
-    while (!turn.finished) {
-      printBoard(turn.openTiles)
+    printBoard(turn.openTiles)
 
-      await ask('\nPress Enter to roll dice...')
-      const roll = turn.roll()
-      console.log(`\nYou rolled: [${roll.values.join(', ')}] = ${roll.total}`)
-      this.room.broadcast(msgDiceRoll(this.myId, roll))
+    await ask('\nPress Enter to roll dice...')
+    const roll = turn.roll()
+    console.log(`\nYou rolled: [${roll.values.join(', ')}] = ${roll.total}`)
+    this.room.broadcast(msgDiceRoll(this.myId, roll))
 
-      if (!turn.canMove()) {
-        console.log('No valid moves available. Turn over!')
-        break
+    if (!turn.canMove()) {
+      console.log('No valid moves available. You are out!')
+      player.finished = true
+      const result = turn.endTurn()
+      player.openTiles = result.openTiles
+      player.score = result.score
+      player.hintsRemaining = result.hintsRemaining
+      this.room.broadcast(msgTurnEnd(this.myId, { ...result, finished: true }))
+      return
+    }
+
+    console.log(`\n(Type "hint" to reveal valid combinations. Hints remaining: ${turn.hintsRemaining})`)
+
+    let validChoice = false
+    while (!validChoice) {
+      const choice = await ask('\nChoose tiles to shut (comma-separated, e.g. "2,5"): ')
+
+      if (choice.trim().toLowerCase() === 'hint') {
+        const combos = turn.useHint()
+        if (combos === null) {
+          console.log('No hints remaining!')
+        } else {
+          console.log(`\nValid combinations (hints left: ${turn.hintsRemaining}):`)
+          combos.forEach((combo, i) => {
+            console.log(`  ${i + 1}) [${combo.join(', ')}]`)
+          })
+        }
+        continue
       }
 
-      const validMoves = turn.getValidMoves()
-      console.log('\nValid combinations:')
-      validMoves.forEach((combo, i) => {
-        console.log(`  ${i + 1}) [${combo.join(', ')}]`)
-      })
+      const chosenTiles = choice.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
 
-      let validChoice = false
-      while (!validChoice) {
-        const choice = await ask('\nChoose tiles to shut (comma-separated, e.g. "2,5"): ')
-        const chosenTiles = choice.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
-
-        try {
-          turn.shutTiles(chosenTiles)
-          validChoice = true
-          console.log(`Shut tiles: [${chosenTiles.join(', ')}]`)
-          this.room.broadcast(msgTilesShut(this.myId, chosenTiles))
-        } catch (err) {
-          console.log(`Invalid: ${err.message}. Try again.`)
-        }
+      try {
+        turn.shutTiles(chosenTiles)
+        validChoice = true
+        console.log(`Shut tiles: [${chosenTiles.join(', ')}]`)
+        this.room.broadcast(msgTilesShut(this.myId, chosenTiles))
+      } catch (err) {
+        console.log(`Invalid: ${err.message}. Try again.`)
       }
     }
 
@@ -295,15 +320,15 @@ class GameController {
     player.openTiles = result.openTiles
     player.score = result.score
     player.shutTheBox = result.shutTheBox
-    player.finished = true
+    player.hintsRemaining = result.hintsRemaining
 
     if (result.shutTheBox) {
       console.log('\n*** YOU SHUT THE BOX! Score: 0 ***')
+      this.room.broadcast(msgTurnEnd(this.myId, { ...result, finished: true }))
     } else {
-      console.log(`\nTurn over. Your score: ${result.score}`)
+      console.log(`\nRound done. Open tiles: [${result.openTiles.join(', ')}] (score so far: ${result.score})`)
+      this.room.broadcast(msgTurnEnd(this.myId, { ...result, finished: false }))
     }
-
-    this.room.broadcast(msgTurnEnd(this.myId, result))
   }
 
   waitForTurnEnd (player) {
@@ -320,12 +345,12 @@ class GameController {
 }
 
 async function main () {
-  console.log('╔═══════════════════════════════════════╗')
-  console.log('║       SHUT THE BOX - P2P Edition      ║')
-  console.log('╠═══════════════════════════════════════╣')
-  console.log('║  Tiles: 1-9 | Players: 2-4           ║')
-  console.log('║  Roll dice, shut tiles, lowest wins!  ║')
-  console.log('╚═══════════════════════════════════════╝')
+  console.log('╔═══════════════════════════════════════════╗')
+  console.log('║        SHUT THE BOX - P2P Edition         ║')
+  console.log('╠═══════════════════════════════════════════╣')
+  console.log(`║  Tiles: 1-${NUM_TILES} | Players: 2-4 | ${MAX_HINTS} hints    ║`)
+  console.log('║  1 roll per round, shut tiles, lowest wins ║')
+  console.log('╚═══════════════════════════════════════════╝')
   console.log()
 
   if (!isHost && !isJoin) {

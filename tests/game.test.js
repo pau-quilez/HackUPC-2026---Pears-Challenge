@@ -6,11 +6,14 @@ import {
 } from '@shut-the-box/game'
 import { validateMove } from '@shut-the-box/game'
 import { Turn } from '@shut-the-box/game'
+import { NUM_TILES, SINGLE_DIE_THRESHOLD, MAX_HINTS } from '@shut-the-box/shared'
 
 describe('createBoard', () => {
-  it('returns tiles 1-9', () => {
+  it(`returns tiles 1-${NUM_TILES}`, () => {
     const board = createBoard()
-    assert.deepStrictEqual(board, [1, 2, 3, 4, 5, 6, 7, 8, 9])
+    const expected = Array.from({ length: NUM_TILES }, (_, i) => i + 1)
+    assert.deepStrictEqual(board, expected)
+    assert.strictEqual(board.length, NUM_TILES)
   })
 })
 
@@ -45,6 +48,11 @@ describe('findValidCombinations', () => {
     const combos = findValidCombinations([9], 3)
     assert.strictEqual(combos.length, 0)
   })
+
+  it('works with tiles up to 12', () => {
+    const combos = findValidCombinations([10, 11, 12], 12)
+    assert.ok(combos.some(c => c.length === 1 && c[0] === 12))
+  })
 })
 
 describe('validateMove', () => {
@@ -65,13 +73,15 @@ describe('validateMove', () => {
 })
 
 describe('shouldRollOneDie', () => {
-  it('returns true when remaining tiles sum <= 6', () => {
-    assert.ok(shouldRollOneDie([1, 2, 3]))
-    assert.ok(shouldRollOneDie([6]))
+  it(`returns true when remaining tiles sum <= ${SINGLE_DIE_THRESHOLD}`, () => {
+    assert.ok(shouldRollOneDie([1, 2]))
+    assert.ok(shouldRollOneDie([3]))
+    assert.ok(shouldRollOneDie([1]))
   })
 
-  it('returns false when sum > 6', () => {
-    assert.ok(!shouldRollOneDie([1, 2, 3, 4]))
+  it(`returns false when sum > ${SINGLE_DIE_THRESHOLD}`, () => {
+    assert.ok(!shouldRollOneDie([1, 2, 3]))
+    assert.ok(!shouldRollOneDie([4]))
     assert.ok(!shouldRollOneDie([7, 8, 9]))
   })
 })
@@ -84,12 +94,40 @@ describe('calculateScore', () => {
   it('returns 0 for empty (shut the box)', () => {
     assert.strictEqual(calculateScore([]), 0)
   })
+
+  it('handles tiles above 9', () => {
+    assert.strictEqual(calculateScore([10, 11, 12]), 33)
+  })
 })
 
 describe('Turn', () => {
-  it('tracks open tiles through a turn', () => {
-    const turn = new Turn([1, 2, 3, 4, 5, 6, 7, 8, 9])
-    assert.strictEqual(turn.openTiles.length, 9)
+  it(`starts with ${NUM_TILES} tiles and ${MAX_HINTS} hints`, () => {
+    const turn = new Turn(createBoard())
+    assert.strictEqual(turn.openTiles.length, NUM_TILES)
+    assert.strictEqual(turn.hintsRemaining, MAX_HINTS)
     assert.ok(!turn.finished)
+  })
+
+  it('ends after shutting tiles (1 roll per turn)', () => {
+    const turn = new Turn([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+    turn.lastRoll = { values: [3, 4], total: 7, count: 2 }
+    turn.shutTiles([3, 4])
+    assert.ok(turn.finished)
+    assert.ok(!turn.openTiles.includes(3))
+    assert.ok(!turn.openTiles.includes(4))
+  })
+
+  it('useHint decrements hints and returns combinations', () => {
+    const turn = new Turn([1, 2, 3])
+    turn.lastRoll = { values: [1, 2], total: 3, count: 2 }
+    const combos = turn.useHint()
+    assert.ok(Array.isArray(combos))
+    assert.strictEqual(turn.hintsRemaining, MAX_HINTS - 1)
+  })
+
+  it('useHint returns null when no hints left', () => {
+    const turn = new Turn([1, 2, 3], 0)
+    turn.lastRoll = { values: [1, 2], total: 3, count: 2 }
+    assert.strictEqual(turn.useHint(), null)
   })
 })

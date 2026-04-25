@@ -1,16 +1,19 @@
 import { rollDice } from './dice.js'
 import { shouldRollOneDie, hasValidMove, findValidCombinations, calculateScore, isBoxShut } from './rules.js'
 import { validateMove } from './validateMove.js'
+import { MAX_HINTS } from '@shut-the-box/shared'
 
 /**
  * Manages a single player's turn in Shut the Box.
+ * Each turn = 1 roll + 1 tile selection, then next player.
  */
 export class Turn {
-  constructor (openTiles) {
+  constructor (openTiles, hintsRemaining = MAX_HINTS) {
     this.openTiles = [...openTiles]
     this.lastRoll = null
     this.finished = false
     this.shutTheBox = false
+    this.hintsRemaining = hintsRemaining
   }
 
   roll () {
@@ -29,8 +32,15 @@ export class Turn {
     return hasValidMove(this.openTiles, this.lastRoll.total)
   }
 
+  useHint () {
+    if (this.hintsRemaining <= 0) return null
+    this.hintsRemaining--
+    return this.getValidMoves()
+  }
+
   /**
    * Shut the chosen tiles. Returns updated open tiles or throws on invalid move.
+   * After shutting, the turn ends (1 roll per turn).
    */
   shutTiles (chosenTiles) {
     const result = validateMove(this.openTiles, chosenTiles, this.lastRoll.total)
@@ -41,10 +51,10 @@ export class Turn {
     this.openTiles = this.openTiles.filter(t => !chosenTiles.includes(t))
 
     if (isBoxShut(this.openTiles)) {
-      this.finished = true
       this.shutTheBox = true
     }
 
+    this.finished = true
     this.lastRoll = null
     return this.openTiles
   }
@@ -54,7 +64,8 @@ export class Turn {
     return {
       openTiles: this.openTiles,
       score: calculateScore(this.openTiles),
-      shutTheBox: this.shutTheBox
+      shutTheBox: this.shutTheBox,
+      hintsRemaining: this.hintsRemaining
     }
   }
 }
