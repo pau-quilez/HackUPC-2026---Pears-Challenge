@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>2 Dice Animation (Dots)</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background-color: #222;
+      color: white;
+      margin-top: 80px;
+    }
+
+    /* Scene and perspective for 3D */
+    .scene {
+      width: 250px;
+      height: 100px;
+      perspective: 600px;
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 50px;
+    }
+
+    /* Container for each die */
+    .cube {
+      width: 100px;
+      height: 100px;
+      position: relative;
+      transform-style: preserve-3d;
+      transition: transform 1.5s ease-out;
+    }
+
+    /* Base style for faces */
+    .face {
+      position: absolute;
+      width: 100px;
+      height: 100px;
+      background: #f0f0f0;
+      border: 2px solid #ccc;
+      border-radius: 12px;
+      box-shadow: inset 0 0 15px rgba(0,0,0,0.1);
+    }
+
+    /* 3D face positioning */
+    .face-1 { transform: translateZ(50px); }
+    .face-2 { transform: rotateX(-90deg) translateZ(50px); } 
+    .face-3 { transform: rotateY(90deg) translateZ(50px); }  
+    .face-4 { transform: rotateY(-90deg) translateZ(50px); } 
+    .face-5 { transform: rotateX(90deg) translateZ(50px); }  
+    .face-6 { transform: rotateY(180deg) translateZ(50px); } 
+
+    /* --- DICE DOT STYLES --- */
+    .dot {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      background-color: #333;
+      border-radius: 50%;
+      box-shadow: inset 0 3px 5px rgba(0,0,0,0.4);
+    }
+
+    /* Dot positions inside each face (100x100) */
+    .dot-center       { top: 40px; left: 40px; }
+    .dot-top-left     { top: 15px; left: 15px; }
+    .dot-top-right    { top: 15px; right: 15px; }
+    .dot-bottom-left  { bottom: 15px; left: 15px; }
+    .dot-bottom-right { bottom: 15px; right: 15px; }
+    .dot-middle-left  { top: 40px; left: 15px; }
+    .dot-middle-right { top: 40px; right: 15px; }
+
+    /* Interface */
+    button {
+      padding: 12px 24px;
+      font-size: 20px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-bottom: 30px;
+      border-radius: 8px;
+      border: none;
+      background-color: #e63946;
+      color: white;
+      transition: background-color 0.2s;
+    }
+
+    button:hover {
+      background-color: #d62828;
+    }
+
+    #result {
+      font-size: 56px;
+      font-weight: bold;
+      transition: opacity 0.3s;
+    }
+
+    .result-pop {
+      animation: pop 0.3s ease-out;
+    }
+
+    @keyframes pop {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.3); color: #e63946; }
+      100% { transform: scale(1); }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="scene">
+    <div id="cube1" class="cube">
+      <div class="face face-1">
+        <div class="dot dot-center"></div>
+      </div>
+      <div class="face face-2">
+        <div class="dot dot-top-left"></div>
+        <div class="dot dot-bottom-right"></div>
+      </div>
+      <div class="face face-3">
+        <div class="dot dot-top-left"></div>
+        <div class="dot dot-center"></div>
+        <div class="dot dot-bottom-right"></div>
+      </div>
+      <div class="face face-4">
+        <div class="dot dot-top-left"></div>
+        <div class="dot dot-top-right"></div>
+        <div class="dot dot-bottom-left"></div>
+        <div class="dot dot-bottom-right"></div>
+      </div>
+      <div class="face face-5">
+        <div class="dot dot-top-left"></div>
+        <div class="dot dot-top-right"></div>
+        <div class="dot dot-center"></div>
+        <div class="dot dot-bottom-left"></div>
+        <div class="dot dot-bottom-right"></div>
+      </div>
+      <div class="face face-6">
+        <div class="dot dot-top-left"></div>
+        <div class="dot dot-top-right"></div>
+        <div class="dot dot-middle-left"></div>
+        <div class="dot dot-middle-right"></div>
+        <div class="dot dot-bottom-left"></div>
+        <div class="dot dot-bottom-right"></div>
+      </div>
+    </div>
+
+    <div id="cube2" class="cube">
+      <div class="face face-1">
+        <div class="dot dot-center"></div>
+      </div>
+      <div class="face face-2">
+        <div class="dot dot-top-left"></div>
+        <div class="dot dot-bottom-right"></div>
+      </div>
+      <div class="face face-3">
+        <div class="dot dot-top-left"></div>
+        <div class="dot dot-center"></div>
+        <div class="dot dot-bottom-right"></div>
+      </div>
+      <div class="face face-4">
+        <div class="dot dot-top-left"></div>
+        <div class="dot dot-top-right"></div>
+        <div class="dot dot-bottom-left"></div>
+        <div class="dot dot-bottom-right"></div>
+      </div>
+      <div class="face face-5">
+        <div class="dot dot-top-left"></div>
+        <div class="dot dot-top-right"></div>
+        <div class="dot dot-center"></div>
+        <div class="dot dot-bottom-left"></div>
+        <div class="dot dot-bottom-right"></div>
+      </div>
+      <div class="face face-6">
+        <div class="dot dot-top-left"></div>
+        <div class="dot dot-top-right"></div>
+        <div class="dot dot-middle-left"></div>
+        <div class="dot dot-middle-right"></div>
+        <div class="dot dot-bottom-left"></div>
+        <div class="dot dot-bottom-right"></div>
+      </div>
+    </div>
+  </div>
+
+  <button onclick="roll()">Roll Dice!</button>
+  <div id="result">...</div>
+
+  <script>
+    const cube1 = document.getElementById("cube1");
+    const cube2 = document.getElementById("cube2");
+    const resultEl = document.getElementById("result");
+
+    // Keep each die rotation so the animation stays smooth roll after roll.
+    let rot = {
+      cube1: { x: 0, y: 0 },
+      cube2: { x: 0, y: 0 }
+    };
+
+    function roll() {
+      // 1. Calculate dice results (from 1 to 6).
+      const die1Value = Math.floor(Math.random() * 6) + 1;
+      const die2Value = Math.floor(Math.random() * 6) + 1;
+      const totalResult = die1Value + die2Value;
+
+      // 2. Coordinates needed to show the matching face.
+      const faceCoords = {
+        1: { x: 0, y: 0 },
+        2: { x: 90, y: 0 },
+        3: { x: 0, y: -90 },
+        4: { x: 0, y: 90 },
+        5: { x: -90, y: 0 },
+        6: { x: 0, y: 180 }
+      };
+
+      const target1 = faceCoords[die1Value];
+      const target2 = faceCoords[die2Value];
+
+      // 3. Prepare result text while dice are rolling.
+      resultEl.classList.remove("result-pop");
+      resultEl.style.opacity = "0.3";
+      resultEl.textContent = "...";
+
+      // 4. Add extra rotations (1440 = 4 extra full spins for animation).
+      rot.cube1.x = Math.ceil(rot.cube1.x / 360) * 360 + 1440 + target1.x;
+      rot.cube1.y = Math.ceil(rot.cube1.y / 360) * 360 + 1440 + target1.y;
+      cube1.style.transform = `rotateX(${rot.cube1.x}deg) rotateY(${rot.cube1.y}deg)`;
+
+      rot.cube2.x = Math.ceil(rot.cube2.x / 360) * 360 + 1440 + target2.x;
+      rot.cube2.y = Math.ceil(rot.cube2.y / 360) * 360 + 1440 + target2.y;
+      cube2.style.transform = `rotateX(${rot.cube2.x}deg) rotateY(${rot.cube2.y}deg)`;
+
+      // 5. Show the exact result after the 1.5s transition ends.
+      setTimeout(() => {
+        resultEl.textContent = totalResult;
+        resultEl.style.opacity = "1";
+        resultEl.classList.add("result-pop");
+      }, 1500); 
+    }
+  </script>
+</body>
+</html>

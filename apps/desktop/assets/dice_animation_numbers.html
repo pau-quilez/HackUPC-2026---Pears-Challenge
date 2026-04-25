@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta charset="UTF-8">
+  <title>Animació de 2 Daus</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background-color: #222;
+      color: white;
+      margin-top: 50px;
+    }
+
+    /* Escena i perspectiva per al 3D */
+    .scene {
+      width: 250px;
+      height: 100px;
+      perspective: 600px;
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 40px;
+    }
+
+    /* Contenidor de cada dau */
+    .cube {
+      width: 100px;
+      height: 100px;
+      position: relative;
+      transform-style: preserve-3d;
+      transition: transform 1.5s ease-out;
+    }
+
+    /* Cares del dau */
+    .face {
+      position: absolute;
+      width: 100px;
+      height: 100px;
+      background: white;
+      color: black;
+      border: 2px solid #ccc;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+      font-weight: bold;
+      box-shadow: inset 0 0 15px rgba(0,0,0,0.2);
+    }
+
+    /* Posicionament 3D de les cares respectant les teves coordenades JS */
+    .face-1 { transform: translateZ(50px); }
+    .face-2 { transform: rotateX(-90deg) translateZ(50px); } /* Coincideix amb x: 90 */
+    .face-3 { transform: rotateY(90deg) translateZ(50px); }  /* Coincideix amb y: -90 */
+    .face-4 { transform: rotateY(-90deg) translateZ(50px); } /* Coincideix amb y: 90 */
+    .face-5 { transform: rotateX(90deg) translateZ(50px); }  /* Coincideix amb x: -90 */
+    .face-6 { transform: rotateY(180deg) translateZ(50px); } /* Coincideix amb y: 180 */
+
+    /* Interfície */
+    button {
+      padding: 10px 20px;
+      font-size: 18px;
+      cursor: pointer;
+      margin-bottom: 20px;
+      border-radius: 5px;
+      border: none;
+      background-color: #4CAF50;
+      color: white;
+    }
+
+    #result {
+      font-size: 48px;
+      font-weight: bold;
+      transition: opacity 0.3s;
+    }
+
+    .result-pop {
+      animation: pop 0.3s ease-out;
+    }
+
+    @keyframes pop {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.3); }
+      100% { transform: scale(1); }
+    }
+
+    /* Panell d'estadístiques */
+    #statsPanel {
+      margin-top: 30px;
+      background: #333;
+      padding: 20px;
+      border-radius: 8px;
+      width: 300px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="scene">
+    <div id="cube1" class="cube">
+      <div class="face face-1">1</div>
+      <div class="face face-2">2</div>
+      <div class="face face-3">3</div>
+      <div class="face face-4">4</div>
+      <div class="face face-5">5</div>
+      <div class="face face-6">6</div>
+    </div>
+    <div id="cube2" class="cube">
+      <div class="face face-1">1</div>
+      <div class="face face-2">2</div>
+      <div class="face face-3">3</div>
+      <div class="face face-4">4</div>
+      <div class="face face-5">5</div>
+      <div class="face face-6">6</div>
+    </div>
+  </div>
+
+  <button onclick="roll()">Tirar Daus!</button>
+  <div id="result">...</div>
+
+  <div id="statsPanel">
+    <h3 style="margin-top:0; border-bottom:1px solid #666; padding-bottom:10px;">Estadístiques</h3>
+    <div id="statsContent"></div>
+  </div>
+
+  <script>
+    const cube1 = document.getElementById("cube1");
+    const cube2 = document.getElementById("cube2");
+    const resultEl = document.getElementById("result");
+    const statsContent = document.getElementById("statsContent");
+
+    // Guardem la rotació independent per a cada dau
+    let rot = {
+      cube1: { x: 0, y: 0 },
+      cube2: { x: 0, y: 0 }
+    };
+
+    // Ajustat per començar al 2 i acabar al 12 (suma de 2 daus)
+    let stats = {
+      counts: { 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0 },
+      streaks: { 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0 },
+      totalRolls: 0,
+      additiveSum: 0,
+      lastRoll: null,
+      currentStreak: 0
+    };
+
+    function roll() {
+      // Resultat independent per a cada dau
+      const res1 = Math.floor(Math.random() * 6) + 1;
+      const res2 = Math.floor(Math.random() * 6) + 1;
+      const totalResult = res1 + res2;
+
+      const faceCoords = {
+        1: { x: 0, y: 0 },
+        2: { x: 90, y: 0 },
+        3: { x: 0, y: -90 },
+        4: { x: 0, y: 90 },
+        5: { x: -90, y: 0 },
+        6: { x: 0, y: 180 }
+      };
+
+      const target1 = faceCoords[res1];
+      const target2 = faceCoords[res2];
+
+      resultEl.classList.remove("result-pop");
+      resultEl.style.opacity = "0.3";
+      resultEl.textContent = "...";
+
+      // Càlcul rotació Dau 1 (+1440 per donar 4 voltes extra d'animació)
+      rot.cube1.x = Math.ceil(rot.cube1.x / 360) * 360 + 1440 + target1.x;
+      rot.cube1.y = Math.ceil(rot.cube1.y / 360) * 360 + 1440 + target1.y;
+      cube1.style.transform = `rotateX(${rot.cube1.x}deg) rotateY(${rot.cube1.y}deg)`;
+
+      // Càlcul rotació Dau 2 (amb voltes extra perquè rodi igual)
+      rot.cube2.x = Math.ceil(rot.cube2.x / 360) * 360 + 1440 + target2.x;
+      rot.cube2.y = Math.ceil(rot.cube2.y / 360) * 360 + 1440 + target2.y;
+      cube2.style.transform = `rotateX(${rot.cube2.x}deg) rotateY(${rot.cube2.y}deg)`;
+
+      setTimeout(() => {
+        updateStats(totalResult);
+        resultEl.textContent = totalResult;
+        resultEl.style.opacity = "1";
+        resultEl.classList.add("result-pop");
+      }, 1500); // Temps sincronitzat amb la transició CSS
+    }
+
+    function updateStats(num) {
+      stats.counts[num]++;
+      stats.totalRolls++;
+      stats.additiveSum += num;
+
+      if (num === stats.lastRoll) {
+        stats.currentStreak++;
+      } else {
+        stats.currentStreak = 1;
+      }
+
+      if (stats.currentStreak > stats.streaks[num]) {
+        stats.streaks[num] = stats.currentStreak;
+      }
+
+      stats.lastRoll = num;
+      renderStats();
+    }
+
+    function renderStats() {
+      let html = `
+        <div class="stat-item">Total Suma: <strong>${stats.additiveSum}</strong></div>
+        <div class="stat-item">Tirades Totals: <strong>${stats.totalRolls}</strong></div>
+        <hr style="border:0; border-top:1px solid #555; margin:15px 0;">
+      `;
+
+      // El bucle ara va del 2 al 12
+      for (let i = 2; i <= 12; i++) {
+        const percent = stats.totalRolls ? ((stats.counts[i] / stats.totalRolls) * 100).toFixed(1) : 0;
+        html += `
+          <div style="margin-bottom: 8px;">
+            Suma ${i}: <strong>${stats.counts[i]} vegades</strong> (${percent}%)
+            <br><small style="color:#aaa;">Racha màxima: ${stats.streaks[i]}</small>
+          </div>
+        `;
+      }
+      statsContent.innerHTML = html;
+    }
+
+    // Renderitzar les estadístiques inicials
+    renderStats();
+  </script>
+</body>
+</html>
