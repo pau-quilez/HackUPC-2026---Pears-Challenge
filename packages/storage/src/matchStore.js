@@ -10,9 +10,10 @@ export class MatchStore {
   }
 
   async getMatch (matchId) {
-    const entry = await this.db.get(matchKey(matchId))
-    return entry ? entry.value : null
-  }
+  const entry = await this.db.get(matchKey(matchId))
+  return entry ? entry.value : null  // return null, not undefined
+}
+  
 
   async updateStats (playerId, score, won) {
     const key = statsKey(playerId)
