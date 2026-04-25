@@ -21,6 +21,8 @@ export const MESSAGE_TYPES = {
 {
   type: MESSAGE_TYPES.PEER_JOINED,
   timestamp: 1716382910289,
+  sequence_id: 0, // Incremental sequence number for ordering
+  match_id: 'msg-000', // Unique message ID for tracking
   authorId: 'system',
   payload: { peerId: 'peer-c3d4', publicKey: 'abc123' }
 }
@@ -30,6 +32,8 @@ export const MESSAGE_TYPES = {
 {
   type: MESSAGE_TYPES.PEER_LEFT,
   timestamp: 1716382910290,
+  sequence_id: 1,
+  match_id: 'msg-000',
   authorId: 'system',
   payload: { peerId: 'peer-c3d4', publicKey: 'abc123'}
 }
@@ -39,6 +43,8 @@ export const MESSAGE_TYPES = {
 {
   type: MESSAGE_TYPES.SECURE_MESSAGE,
   timestamp: 1716382910291,
+  sequence_id: 2,
+  match_id: 'msg-001',
   authorId: 'peer-a1b2',
   payload: { text: 'The server password is 1234' }
 }
@@ -57,6 +63,8 @@ export const MESSAGE_TYPES = {
 {
   type: MESSAGE_TYPES.GAME_START,
   timestamp: 1716382910292,
+  sequence_id: 1, // Incremental sequence number for ordering
+  match_id: 'msg-001', // Unique message ID for tracking
   authorId: 'peer-a1b2',
   payload: { players: ['peer-a1b2', 'peer-e5f6'] }
 }
@@ -66,6 +74,8 @@ export const MESSAGE_TYPES = {
 {
   type: MESSAGE_TYPES.DICE_ROLLED,
   timestamp: 1716382910295,
+  sequence_id: 8, // Incremental sequence number for ordering
+  match_id: 'match-xyz', // Unique identifier for the game session
   authorId: 'peer-a1b2',
   payload: { dice1: 4, dice2: 3, total: 7 }
 }
@@ -75,6 +85,8 @@ export const MESSAGE_TYPES = {
 {
   type: MESSAGE_TYPES.TILES_CLOSED,
   timestamp: 1716382910300,
+  sequence_id: 9, // Incremental sequence number for ordering
+  match_id: 'match-xyz', // Unique identifier for the game session
   authorId: 'peer-a1b2',
   payload: { tiles: [3, 4] } // The player closes 3 and 4 because they add up to 7
 }
@@ -84,6 +96,8 @@ export const MESSAGE_TYPES = {
 {
   type: MESSAGE_TYPES.TURN_PASSED,
   timestamp: 1716382910305,
+  sequence_id: 10,
+  match_id: 'match-xyz',
   authorId: 'peer-a1b2',
   payload: { nextPlayer: 'peer-e5f6' }
 }
@@ -93,6 +107,8 @@ export const MESSAGE_TYPES = {
 {
   type: MESSAGE_TYPES.GAME_OVER,
   timestamp: 1716382910310,
+  sequence_id: 11,
+  match_id: 'match-xyz',
   authorId: 'system',
   payload: { winner: 'peer-e5f6', score: 5 }
 }
@@ -101,6 +117,8 @@ export const MESSAGE_TYPES = {
 /* Example of a leaderboard update:
 {
   type: MESSAGE_TYPES.LEADERBOARD_UPDATE,
+  sequence_id: 12,
+  match_id: 'match-xyz',
   timestamp: 1716382910315,
   authorId: 'system',
   payload: { leaderboard: [{ peerId: 'peer-e5f6', wins: 1 }, { peerId: 'peer-a1b2', wins: 0 }] }
