@@ -4,6 +4,7 @@ let controller = null
 let runningConnect = false
 let GameControllerClass = null
 const NUM_TILES = 12
+const PLAYER_COLOR_CLASSES = ['color-yellow', 'color-red', 'color-green', 'color-blue']
 
 const ui = {
 	screen: 'connect',
@@ -19,6 +20,7 @@ const ui = {
 	canSelectTiles: false,
 	selectedTiles: [],
 	lastRoll: null,
+	noMoreMovesNotice: '',
 	status: '',
 	error: '',
 	results: []
@@ -106,6 +108,7 @@ function wireControllerEvents () {
 		ui.canSelectTiles = false
 		ui.selectedTiles = []
 		ui.lastRoll = null
+		ui.noMoreMovesNotice = ''
 		setStatus(`Round ${round}`)
 		render()
 	})
@@ -156,6 +159,10 @@ function wireControllerEvents () {
 	})
 
 	controller.on('no-valid-moves', ({ player, isMe }) => {
+		ui.noMoreMovesNotice = isMe
+			? 'You cannot shut any more tiles this turn.'
+			: `${player.name} cannot shut any more tiles this turn.`
+
 		if (isMe) {
 			resetTurnUiState()
 			setStatus('No valid moves. You are out.')
@@ -319,6 +326,7 @@ async function onLeaveGame () {
 		canSelectTiles: false,
 		selectedTiles: [],
 		lastRoll: null,
+		noMoreMovesNotice: '',
 		status: '',
 		error: '',
 		results: []
@@ -413,6 +421,7 @@ function renderGameView () {
 			</header>
 
 			<p class="status">${escapeHtml(ui.status || 'Game running...')}</p>
+			${ui.noMoreMovesNotice ? `<p class="hint">${escapeHtml(ui.noMoreMovesNotice)}</p>` : ''}
 			<p class="turn">Current turn: <strong>${escapeHtml(currentPlayer?.name || '...')}</strong></p>
 
 			<div class="actions">
@@ -430,8 +439,10 @@ function renderGameView () {
 			</div>
 
 			<div class="boards">
-				${ui.players.map(player => `
-					<article class="player-card ${player.id === ui.myId ? 'mine' : ''} ${currentPlayer && player.id === currentPlayer.id ? 'active' : ''}">
+				${ui.players.map((player, index) => {
+					const colorClass = PLAYER_COLOR_CLASSES[index % PLAYER_COLOR_CLASSES.length]
+					return `
+					<article class="player-card ${colorClass} ${player.id === ui.myId ? 'mine' : ''} ${currentPlayer && player.id === currentPlayer.id ? 'active' : ''}">
 						<header>
 							<h3>${escapeHtml(player.name)} ${player.id === ui.myId ? '<small>(you)</small>' : ''}</h3>
 							<p>Score: ${player.shutTheBox ? 0 : player.score}</p>
@@ -440,7 +451,7 @@ function renderGameView () {
 							${renderTiles(player)}
 						</div>
 					</article>
-				`).join('')}
+				`}).join('')}
 			</div>
 
 			${ui.error ? `<p class="error">${escapeHtml(ui.error)}</p>` : ''}
