@@ -1,0 +1,29 @@
+node_modules/
+dist/
+.DS_Store
+Thumbs.db
+*.log
+
+# Hypercore storage (local peer data)
+.storage-*/
+storage-*/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+desktop.ini
+ehthumbs.db
+
+# Environment
+.env
+.env.local
+
+# Build artifacts
+*.tgz
+
+# TODO file (personal notes)
+TODO

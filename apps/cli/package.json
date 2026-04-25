@@ -1,0 +1,15 @@
+{
+  "name": "@shut-the-box/cli",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "shut-the-box": "./index.js"
+  },
+  "dependencies": {
+    "@shut-the-box/shared": "*",
+    "@shut-the-box/game": "*",
+    "@shut-the-box/p2p": "*",
+    "@shut-the-box/storage": "*"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "shut-the-box-p2p",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "P2P multiplayer Shut the Box game built with Holepunch/Pear Protocol",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "cli": "node apps/cli/index.js",
+    "cli:host": "node apps/cli/index.js --host",
+    "cli:join": "node apps/cli/index.js --join",
+    "test": "node --test tests/*.test.js"
+  },
+  "keywords": ["p2p", "hyperswarm", "shut-the-box", "pear", "holepunch"],
+  "license": "MIT"
+}

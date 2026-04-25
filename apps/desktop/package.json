@@ -1,0 +1,17 @@
+{
+  "name": "@shut-the-box/desktop",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/main.js",
+  "pear": {
+    "name": "shut-the-box",
+    "type": "desktop"
+  },
+  "dependencies": {
+    "@shut-the-box/shared": "*",
+    "@shut-the-box/game": "*",
+    "@shut-the-box/p2p": "*",
+    "@shut-the-box/storage": "*"
+  },
+  "devDependencies": {}
+}
