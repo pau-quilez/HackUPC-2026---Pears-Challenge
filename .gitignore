@@ -4,9 +4,8 @@ dist/
 Thumbs.db
 *.log
 
-# Hypercore storage (local peer data)
-.storage-*/
-storage-*/
+# Local storage (Hypercore/Hyperbee data)
+data/
 
 # IDE
 .vscode/

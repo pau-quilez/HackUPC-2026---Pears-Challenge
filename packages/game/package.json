@@ -8,9 +8,12 @@
     "./rules": "./src/rules.js",
     "./dice": "./src/dice.js",
     "./turn": "./src/turn.js",
-    "./validateMove": "./src/validateMove.js"
+    "./validateMove": "./src/validateMove.js",
+    "./controller": "./src/controller.js"
   },
   "dependencies": {
-    "@shut-the-box/shared": "*"
+    "@shut-the-box/shared": "*",
+    "@shut-the-box/p2p": "*",
+    "@shut-the-box/storage": "*"
   }
 }

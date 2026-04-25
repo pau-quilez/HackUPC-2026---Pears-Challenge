@@ -1,16 +1,18 @@
 #!/usr/bin/env node
 
+/**
+ * CLI adapter for GameController.
+ * Renders controller events to the terminal and calls controller actions
+ * in response to user input. Contains zero game logic.
+ */
+
 import readline from 'node:readline'
-import { Room } from '@shut-the-box/p2p'
-import {
-  msgPlayerReady, msgGameStart, msgDiceRoll,
-  msgTilesShut, msgTurnEnd, msgGameOver
-} from '@shut-the-box/p2p'
-import { Turn, createBoard, calculateScore } from '@shut-the-box/game'
-import {
-  GAME_PHASES, MSG_TYPES, NUM_TILES, MAX_HINTS,
-  MIN_PLAYERS, MAX_PLAYERS, shortId
-} from '@shut-the-box/shared'
+import { GameController } from '@shut-the-box/game'
+import { NUM_TILES, MAX_HINTS, MIN_PLAYERS, shortId } from '@shut-the-box/shared'
+
+// ─────────────────────────────────────────────
+// Terminal I/O helpers
+// ─────────────────────────────────────────────
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
 const ask = (q) => new Promise(resolve => rl.question(q, resolve))
@@ -20,10 +22,10 @@ function printBoard (openTiles) {
   for (let i = 1; i <= NUM_TILES; i++) {
     cells.push(openTiles.includes(i) ? (i < 10 ? ` ${i} ` : `${i} `) : ' X ')
   }
-  const border = cells.map(() => '───')
-  console.log('┌' + border.join('┬') + '┐')
+  const sep = cells.map(() => '───')
+  console.log('┌' + sep.join('┬') + '┐')
   console.log('│' + cells.join('│') + '│')
-  console.log('└' + border.join('┴') + '┘')
+  console.log('└' + sep.join('┴') + '┘')
 }
 
 function printScoreboard (players) {
@@ -437,11 +439,20 @@ async function main () {
   console.log('╚═══════════════════════════════════════════╝')
   console.log()
 
-  const game = new GameController()
-  await game.start()
+  const name = await ask('Your name: ')
+  const roomName = await ask('Room name: ')
+
+  const controller = new GameController()
+  wireEvents(controller)
+
+  if (isHost) {
+    setImmediate(() => hostLobbyLoop(controller))
+  }
+
+  await controller.connect(name, roomName, isHost)
 }
 
-main().catch((err) => {
-  console.error('Fatal error:', err)
+main().catch(err => {
+  console.error('\nFatal error:', err.message)
   process.exit(1)
 })
