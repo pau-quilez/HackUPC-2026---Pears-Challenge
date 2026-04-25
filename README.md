@@ -139,8 +139,7 @@ shut-the-box-p2p/
 │   └── storage/             → Persistent storage (Hyperbee)
 ├── data/                    → Local game data (git-ignored, auto-generated)
 ├── tests/                   → Unit tests (26 tests)
-├── docs/                    → Documentation
-└── TAREAS.md                → Task breakdown
+└── docs/                    → Documentation
 ```
 
 ### Package documentation
