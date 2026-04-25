@@ -1,0 +1,12 @@
+{
+  "name": "@shut-the-box/shared",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./constants": "./src/constants.js",
+    "./types": "./src/types.js",
+    "./utils": "./src/utils.js"
+  }
+}

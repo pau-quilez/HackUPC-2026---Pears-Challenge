@@ -1,0 +1,5 @@
+export { rollDie, rollDice } from './dice.js'
+export { createBoard, sumTiles, shouldRollOneDie, isBoxShut, findValidCombinations, hasValidMove, calculateScore } from './rules.js'
+export { validateMove } from './validateMove.js'
+export { Turn } from './turn.js'
+export { GameController } from './controller.js'

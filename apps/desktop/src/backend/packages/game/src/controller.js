@@ -1,4 +1,4 @@
-import { EventEmitter } from 'node:events'
+import { EventEmitter } from '../../../EventEmitter.js'
 import { Room } from '../../p2p/src/index.js'
 import {
   msgGameStart, msgDiceRoll, msgTilesShut,

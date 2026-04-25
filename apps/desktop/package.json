@@ -2,16 +2,19 @@
   "name": "@shut-the-box/desktop",
   "version": "1.0.0",
   "type": "module",
-  "main": "src/main.js",
+  "main": "index.js",
   "pear": {
     "name": "shut-the-box",
-    "type": "desktop"
+    "type": "desktop",
+    "pre": "pear-electron/pre"
   },
   "dependencies": {
-    "@shut-the-box/shared": "*",
-    "@shut-the-box/game": "*",
-    "@shut-the-box/p2p": "*",
-    "@shut-the-box/storage": "*"
-  },
-  "devDependencies": {}
+    "b4a": "^1.6.7",
+    "bare-crypto": "^1.13.4",
+    "hyperbee": "^2.27.3",
+    "hypercore": "^11.28.1",
+    "hyperswarm": "^4.17.0",
+    "pear-bridge": "^1.2.5",
+    "pear-electron": "^1.7.28"
+  }
 }
