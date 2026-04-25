@@ -8,9 +8,9 @@ import { shortId } from '@shut-the-box/shared'
  * It handles player registration and message routing.
  */
 export class Room extends EventEmitter {
-  constructor (playerName) {
+  constructor (playerName, core = null) {
     super()
-    this.swarm = new SwarmManager()
+    this.swarm = new SwarmManager(core)
     this.playerName = playerName
     this.players = new Map()
     this.isHost = false
