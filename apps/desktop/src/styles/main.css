@@ -161,6 +161,11 @@ button.secondary {
   transition: transform 1.5s ease-out;
 }
 
+.dice-scene.rolling .dice-cube {
+  animation: dice-spin 320ms linear infinite;
+  transition: none;
+}
+
 .dice-cube.dimmed {
   opacity: 0.4;
 }
@@ -198,6 +203,11 @@ button.secondary {
 .dot-bottom-right { bottom: 10px; right: 10px; }
 .dot-middle-left  { top: 26px; left: 10px; }
 .dot-middle-right { top: 26px; right: 10px; }
+
+@keyframes dice-spin {
+  from { transform: rotateX(0deg) rotateY(0deg); }
+  to { transform: rotateX(360deg) rotateY(360deg); }
+}
 
 .boards {
   display: grid;

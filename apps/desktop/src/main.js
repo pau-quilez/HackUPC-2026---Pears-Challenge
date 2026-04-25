@@ -88,22 +88,13 @@ function nextDiceRotation (current, target) {
 	return Math.ceil(current / 360) * 360 + 1440 + target
 }
 
-function animateDice (values) {
+function animateDice (values, onDone = null) {
 	const first = normalizeDieValue(values?.[0])
 	const second = normalizeDieValue(values?.[1] ?? 1)
 	const firstTarget = DICE_FACE_ROTATIONS[first]
 	const secondTarget = DICE_FACE_ROTATIONS[second]
 	const [firstRot, secondRot] = ui.diceRotations
-
-	if (diceAnimationTimer) {
-		clearTimeout(diceAnimationTimer)
-		diceAnimationTimer = null
-	}
-
-	ui.diceFaces = [first, second]
-	ui.diceSingleMode = values.length < 2
-	ui.diceRolling = true
-	ui.diceRotations = [
+	const nextRotations = [
 		{
 			x: nextDiceRotation(firstRot.x, firstTarget.x),
 			y: nextDiceRotation(firstRot.y, firstTarget.y)
@@ -114,10 +105,21 @@ function animateDice (values) {
 		}
 	]
 
+	if (diceAnimationTimer) {
+		clearTimeout(diceAnimationTimer)
+		diceAnimationTimer = null
+	}
+
+	ui.diceFaces = [first, second]
+	ui.diceSingleMode = values.length < 2
+	ui.diceRolling = true
+
 	render()
 
 	diceAnimationTimer = setTimeout(() => {
 		ui.diceRolling = false
+		ui.diceRotations = nextRotations
+		if (typeof onDone === 'function') onDone()
 		diceAnimationTimer = null
 		render()
 	}, DICE_ANIMATION_MS)
@@ -238,14 +240,16 @@ function wireControllerEvents () {
 	})
 
 	controller.on('roll-result', ({ player, roll, isMe }) => {
-		ui.lastRoll = roll
-		animateDice(roll.values)
-		if (isMe) {
-			setStatus(`You rolled ${roll.values.join(' + ')} = ${roll.total}`)
-		} else {
-			setStatus(`${player.name} rolled ${roll.values.join(' + ')} = ${roll.total}`)
-		}
-		render()
+		ui.lastRoll = null
+		setStatus(isMe ? 'Rolling dice...' : `${player.name} is rolling...`)
+		animateDice(roll.values, () => {
+			ui.lastRoll = roll
+			if (isMe) {
+				setStatus(`You rolled ${roll.values.join(' + ')} = ${roll.total}`)
+			} else {
+				setStatus(`${player.name} rolled ${roll.values.join(' + ')} = ${roll.total}`)
+			}
+		})
 	})
 
 	controller.on('tiles-shut', ({ player, tiles, isMe }) => {
