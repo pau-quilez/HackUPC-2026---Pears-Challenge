@@ -244,7 +244,7 @@ export class GameController extends EventEmitter {
 
   async _initStorage () {
     this.matchId = generateId()
-    const storagePath = `./.storage-${this.matchId.slice(0, 8)}`
+    const storagePath = `./data/matches/${this.matchId.slice(0, 8)}`
     const { core, db } = await createDatabase(storagePath)
     this._dbCore = core
     this._db = db

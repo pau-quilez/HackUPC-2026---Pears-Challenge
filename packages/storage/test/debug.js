@@ -3,7 +3,7 @@ import { EventLog } from '../src/eventLog.js'
 
 async function debugStorage () {
   console.log('=== Storage Debug ===')
-  const { core, db } = await createDatabase('./.test-debug')
+  const { core, db } = await createDatabase('./data/test/debug')
   
   const log = new EventLog(db, 'match-1')
   
