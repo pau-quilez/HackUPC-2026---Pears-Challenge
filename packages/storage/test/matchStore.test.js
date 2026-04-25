@@ -4,7 +4,7 @@ import { createDatabase, closeDatabase } from '../src/db.js'
 import { MatchStore } from '../src/matchStore.js'
 
 test('MatchStore saves and loads match data', async () => {
-  const { core, db } = await createDatabase('./.test-storage-matchstore')
+  const { core, db } = await createDatabase('./.test-matchstore')
   const store = new MatchStore(db)
 
   await store.saveMatch('match-1', {
@@ -13,8 +13,11 @@ test('MatchStore saves and loads match data', async () => {
   })
 
   const match = await store.getMatch('match-1')
-  assert.equal(match.matchId, 'match-1')
-  assert.deepEqual(match.players, ['peer-1', 'peer-2'])
+  assert(match !== null)
+  assert.deepEqual(match, {
+    players: ['peer-1', 'peer-2'],
+    startedAt: 123
+  })
 
   await closeDatabase({ core })
 })

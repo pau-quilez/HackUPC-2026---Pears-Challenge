@@ -28,7 +28,14 @@ export function applyEvent (state, event) {
       return {
         ...state,
         phase: 'playing',
-        players: event.payload.players ?? [],
+        players: (event.payload.players ?? []).map(id => ({
+          id,
+          name: `Player ${id.slice(-4)}`,
+          openTiles: [1,2,3,4,5,6,7,8,9],  // full board
+          score: 0,
+          ready: true,
+          finished: false
+        })),
         hostId: event.payload.hostId ?? state.hostId
       }
 
