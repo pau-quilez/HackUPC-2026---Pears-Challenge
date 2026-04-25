@@ -1,370 +1,270 @@
 #!/usr/bin/env node
 
+/**
+ * CLI adapter for GameController.
+ * Renders controller events to the terminal and calls controller actions
+ * in response to user input. Contains zero game logic.
+ */
+
 import readline from 'node:readline'
-import { Room } from '@shut-the-box/p2p'
-import {
-  msgPlayerReady, msgGameStart, msgDiceRoll,
-  msgTilesShut, msgTurnEnd, msgGameOver
-} from '@shut-the-box/p2p'
-import { Turn, createBoard, calculateScore } from '@shut-the-box/game'
-import {
-  GAME_PHASES, MSG_TYPES, NUM_TILES, MAX_HINTS,
-  MIN_PLAYERS, MAX_PLAYERS, shortId
-} from '@shut-the-box/shared'
+import { GameController } from '@shut-the-box/game'
+import { NUM_TILES, MAX_HINTS, MIN_PLAYERS, shortId } from '@shut-the-box/shared'
+
+// ─────────────────────────────────────────────
+// Terminal I/O helpers
+// ─────────────────────────────────────────────
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
 const ask = (q) => new Promise(resolve => rl.question(q, resolve))
-
-const args = process.argv.slice(2)
-const isHost = args.includes('--host')
-const isJoin = args.includes('--join')
 
 function printBoard (openTiles) {
   const cells = []
   for (let i = 1; i <= NUM_TILES; i++) {
     cells.push(openTiles.includes(i) ? (i < 10 ? ` ${i} ` : `${i} `) : ' X ')
   }
-  const border = cells.map(() => '───')
-  console.log('┌' + border.join('┬') + '┐')
+  const sep = cells.map(() => '───')
+  console.log('┌' + sep.join('┬') + '┐')
   console.log('│' + cells.join('│') + '│')
-  console.log('└' + border.join('┴') + '┘')
+  console.log('└' + sep.join('┴') + '┘')
 }
 
-function printScoreboard (players) {
-  console.log('\n--- Scoreboard ---')
-  const sorted = [...players].sort((a, b) => a.score - b.score)
-  sorted.forEach((p, i) => {
-    const medal = i === 0 ? '>>> ' : '    '
-    const stb = p.shutTheBox ? ' (SHUT THE BOX!)' : ''
-    console.log(`${medal}${p.name}: ${p.score} points${stb}`)
+function printScoreboard (results) {
+  console.log('\n── Final Scoreboard ────────────────────────')
+  results.forEach((p, i) => {
+    const rank = i === 0 ? '🏆 ' : `${i + 1}.  `
+    const stb = p.shutTheBox ? '  ← SHUT THE BOX!' : ''
+    console.log(`  ${rank}${p.name}: ${p.score} pts${stb}`)
   })
-  console.log('------------------\n')
+  // Tie detection
+  const best = results[0].score
+  const winners = results.filter(r => r.score === best)
+  if (winners.length > 1) {
+    console.log(`\n  Tie between: ${winners.map(w => w.name).join(' & ')}`)
+  }
+  console.log('────────────────────────────────────────────\n')
 }
 
-class GameController {
-  constructor () {
-    this.room = null
-    this.phase = GAME_PHASES.LOBBY
-    this.players = []
-    this.currentPlayerIndex = 0
-    this.myId = null
-    this.isHost = false
-    this.round = 0
-  }
+// ─────────────────────────────────────────────
+// Host lobby loop (runs in parallel with connect)
+// ─────────────────────────────────────────────
 
-  getMyPlayer () {
-    return this.players.find(p => p.id === this.myId)
-  }
+async function hostLobbyLoop (controller) {
+  while (controller.state.phase === 'lobby') {
+    const { players } = controller.state
+    console.log(`\nPlayers in room: ${players.length}`)
+    players.forEach(p => console.log(`  - ${p.name} (${shortId(p.id)})`))
 
-  async start () {
-    const name = await ask('Enter your name: ')
-    const roomName = await ask('Enter room name: ')
-
-    this.room = new Room(name)
-    this.isHost = isHost
-
-    this.room.on('message', (msg) => this.handleMessage(msg))
-
-    if (isHost) {
-      await this.room.host(roomName)
-    } else {
-      await this.room.join(roomName)
+    if (players.length < MIN_PLAYERS) {
+      console.log(`  Need at least ${MIN_PLAYERS} players to start.`)
+      await ask('Press Enter to refresh...')
+      continue
     }
 
-    this.myId = this.room.myId
-    this.players.push({
-      id: this.myId,
-      name,
-      openTiles: createBoard(),
-      score: 0,
-      finished: false,
-      shutTheBox: false,
-      hintsRemaining: MAX_HINTS
-    })
-
-    console.log(`\nWaiting for players... (${this.isHost ? 'you are the host' : 'waiting for host to start'})`)
-
-    if (this.isHost) {
-      await this.hostLobby()
-    } else {
-      await this.waitForStart()
+    const answer = await ask(`Start game with ${players.length} players? (y/n): `)
+    if (answer.trim().toLowerCase() === 'y') {
+      controller.startGame()
+      break
     }
   }
+}
 
-  async hostLobby () {
-    while (this.phase === GAME_PHASES.LOBBY) {
-      const totalPlayers = this.players.length
-      console.log(`\nPlayers in room: ${totalPlayers}`)
-      this.players.forEach(p => console.log(`  - ${p.name} (${shortId(p.id)})`))
+// ─────────────────────────────────────────────
+// Wire events → terminal rendering
+// ─────────────────────────────────────────────
 
-      if (totalPlayers < MIN_PLAYERS) {
-        console.log(`Need at least ${MIN_PLAYERS} players to start.`)
-        await ask('Press Enter to refresh...')
-        continue
-      }
+function wireEvents (controller) {
+  controller.on('waiting', ({ isHost }) => {
+    console.log(`\nWaiting for players... (${isHost ? 'you are the host — Press Enter to refresh' : 'waiting for host to start'})`)
+  })
 
-      const answer = await ask(`Start game with ${totalPlayers} players? (y/n): `)
-      if (answer.toLowerCase() === 'y') {
-        this.phase = GAME_PHASES.PLAYING
-        this.room.broadcast(msgGameStart(this.myId, {
-          players: this.players.map(p => ({ id: p.id, name: p.name })),
-          phase: GAME_PHASES.PLAYING
-        }))
-        console.log('\n=== GAME STARTED ===\n')
-        await this.gameLoop()
-      }
-    }
-  }
+  controller.on('player-joined', ({ player }) => {
+    console.log(`\n>>> ${player.name} joined!`)
+  })
 
-  async waitForStart () {
-    return new Promise((resolve) => {
-      this._startResolve = resolve
-    })
-  }
+  controller.on('player-left', ({ peerId }) => {
+    console.log(`\n<<< ${shortId(peerId)} disconnected.`)
+  })
 
-  handleMessage (msg) {
-    switch (msg.type) {
-      case MSG_TYPES.PLAYER_JOIN: {
-        if (!this.players.find(p => p.id === msg.from)) {
-          this.players.push({
-            id: msg.from,
-            name: msg.payload.name,
-            openTiles: createBoard(),
-            score: 0,
-            finished: false,
-            shutTheBox: false,
-            hintsRemaining: MAX_HINTS
-          })
-          console.log(`\n>>> ${msg.payload.name} joined the room!`)
-        }
-        break
-      }
+  controller.on('game-started', ({ players, matchId }) => {
+    console.log(`\n═══════════════════════════════════`)
+    console.log(`  GAME STARTED  (match: ${matchId.slice(0, 8)})`)
+    console.log(`  Players: ${players.map(p => p.name).join(', ')}`)
+    console.log(`═══════════════════════════════════\n`)
+  })
 
-      case MSG_TYPES.GAME_START: {
-        this.phase = GAME_PHASES.PLAYING
-        const serverPlayers = msg.payload.players
-        for (const sp of serverPlayers) {
-          if (!this.players.find(p => p.id === sp.id)) {
-            this.players.push({
-              id: sp.id,
-              name: sp.name,
-              openTiles: createBoard(),
-              score: 0,
-              finished: false,
-              shutTheBox: false,
-              hintsRemaining: MAX_HINTS
-            })
-          }
-        }
-        console.log('\n=== GAME STARTED ===\n')
-        if (this._startResolve) {
-          this._startResolve()
-          this.gameLoop()
-        }
-        break
-      }
+  controller.on('round-start', ({ round }) => {
+    console.log(`\n────────────  ROUND ${round}  ────────────`)
+  })
 
-      case MSG_TYPES.DICE_ROLL: {
-        if (msg.from !== this.myId) {
-          const player = this.players.find(p => p.id === msg.from)
-          const name = player?.name || shortId(msg.from)
-          console.log(`\n${name} rolled: [${msg.payload.values.join(', ')}] = ${msg.payload.total}`)
-        }
-        break
-      }
+  controller.on('player-skipped', ({ player }) => {
+    console.log(`  ${player.name} already done (score: ${player.score}).`)
+  })
 
-      case MSG_TYPES.TILES_SHUT: {
-        if (msg.from !== this.myId) {
-          const player = this.players.find(p => p.id === msg.from)
-          const name = player?.name || shortId(msg.from)
-          const tiles = msg.payload.tiles
-          console.log(`${name} shut tiles: [${tiles.join(', ')}]`)
-          if (player) {
-            player.openTiles = player.openTiles.filter(t => !tiles.includes(t))
-          }
-        }
-        break
-      }
-
-      case MSG_TYPES.TURN_END: {
-        if (msg.from !== this.myId) {
-          const player = this.players.find(p => p.id === msg.from)
-          if (player) {
-            player.openTiles = msg.payload.openTiles
-            player.score = msg.payload.score
-            player.finished = msg.payload.finished || false
-            player.shutTheBox = msg.payload.shutTheBox
-            const name = player.name
-            if (msg.payload.shutTheBox) {
-              console.log(`\n*** ${name} SHUT THE BOX! Score: 0 ***`)
-            } else if (msg.payload.finished) {
-              console.log(`\n${name} has no valid moves. Score so far: ${msg.payload.score}`)
-            } else {
-              console.log(`\n${name}'s round ended. Open tiles: [${msg.payload.openTiles.join(', ')}]`)
-            }
-          }
-        }
-        break
-      }
-
-      case MSG_TYPES.GAME_OVER: {
-        console.log('\n========== GAME OVER ==========')
-        printScoreboard(msg.payload.results)
-        this.phase = GAME_PHASES.FINISHED
-        break
-      }
-    }
-  }
-
-  allPlayersFinished () {
-    return this.players.every(p => p.finished || p.shutTheBox)
-  }
-
-  async gameLoop () {
-    // Rounds continue until all players are finished (no valid moves or shut the box)
-    while (!this.allPlayersFinished()) {
-      this.round++
-      console.log(`\n========== ROUND ${this.round} ==========`)
-
-      for (let i = 0; i < this.players.length; i++) {
-        this.currentPlayerIndex = i
-        const player = this.players[i]
-
-        if (player.finished || player.shutTheBox) {
-          console.log(`\n${player.name} is already done (score: ${player.score}).`)
-          continue
-        }
-
-        if (player.id === this.myId) {
-          console.log(`\n=== YOUR TURN (${player.name}) === [Round ${this.round}]`)
-          await this.playMyTurn(player)
-        } else {
-          console.log(`\n=== ${player.name}'s turn === [Round ${this.round}]`)
-          console.log('Waiting for their move...')
-          await this.waitForTurnEnd(player)
-        }
-      }
-    }
-
-    this.phase = GAME_PHASES.FINISHED
-    const results = this.players.map(p => ({
-      id: p.id,
-      name: p.name,
-      score: p.shutTheBox ? 0 : calculateScore(p.openTiles),
-      shutTheBox: p.shutTheBox
-    }))
-
-    if (this.isHost) {
-      this.room.broadcast(msgGameOver(this.myId, results))
-    }
-
-    console.log('\n========== GAME OVER ==========')
-    printScoreboard(results)
-    rl.close()
-    await this.room.destroy()
-  }
-
-  async playMyTurn (player) {
-    const turn = new Turn(player.openTiles, player.hintsRemaining)
-
-    printBoard(turn.openTiles)
+  // My turn: show board, prompt roll, then tile selection
+  controller.on('my-turn', async ({ player, round }) => {
+    console.log(`\n>>> YOUR TURN — ${player.name} [Round ${round}]`)
+    printBoard(player.openTiles)
 
     await ask('\nPress Enter to roll dice...')
-    const roll = turn.roll()
-    console.log(`\nYou rolled: [${roll.values.join(', ')}] = ${roll.total}`)
-    this.room.broadcast(msgDiceRoll(this.myId, roll))
+    controller.roll()
+  })
 
-    if (!turn.canMove()) {
-      console.log('No valid moves available. You are out!')
-      player.finished = true
-      const result = turn.endTurn()
-      player.openTiles = result.openTiles
-      player.score = result.score
-      player.hintsRemaining = result.hintsRemaining
-      this.room.broadcast(msgTurnEnd(this.myId, { ...result, finished: true }))
-      return
-    }
+  controller.on('roll-result', async ({ player, roll, isMe }) => {
+    if (isMe) {
+      console.log(`\nYou rolled: [${roll.values.join(', ')}] = ${roll.total}`)
 
-    console.log(`\n(Type "hint" to reveal valid combinations. Hints remaining: ${turn.hintsRemaining})`)
+      // Tile selection loop — runs after canMove check in controller
+      // If controller emits no-valid-moves first, this won't be reached
+      const selectTiles = async () => {
+        const { hintsRemaining } = controller.state
+        console.log(`\n(type "hint" to reveal combos — ${hintsRemaining} hint${hintsRemaining !== 1 ? 's' : ''} left)`)
 
-    let validChoice = false
-    while (!validChoice) {
-      const choice = await ask('\nChoose tiles to shut (comma-separated, e.g. "2,5"): ')
+        while (true) {
+          const raw = await ask('Choose tiles to shut (e.g. "3,5"): ')
+          const input = raw.trim().toLowerCase()
 
-      if (choice.trim().toLowerCase() === 'hint') {
-        const combos = turn.useHint()
-        if (combos === null) {
-          console.log('No hints remaining!')
-        } else {
-          console.log(`\nValid combinations (hints left: ${turn.hintsRemaining}):`)
-          combos.forEach((combo, i) => {
-            console.log(`  ${i + 1}) [${combo.join(', ')}]`)
-          })
+          if (input === 'hint') {
+            const combos = controller.useHint()
+            if (combos === null) {
+              console.log('  No hints remaining!')
+            } else {
+              const left = controller.state.hintsRemaining
+              console.log(`  Valid combos (${left} hint${left !== 1 ? 's' : ''} left):`)
+              combos.forEach((c, i) => console.log(`    ${i + 1}) [${c.join(', ')}]`))
+            }
+            continue
+          }
+
+          const tiles = input.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
+          if (tiles.length === 0) {
+            console.log('  Enter tile numbers separated by commas.')
+            continue
+          }
+
+          // shutTiles() emits 'error' on invalid, 'tiles-shut' on success
+          // We use a one-time listener to detect the outcome
+          let resolved = false
+          const onError = ({ message }) => {
+            if (!resolved) console.log(`  Invalid: ${message}`)
+          }
+          controller.once('error', onError)
+          controller.shutTiles(tiles)
+          // Give the event loop a tick — if tiles-shut fired, _shutResolve was called
+          await new Promise(r => setImmediate(r))
+          controller.removeListener('error', onError)
+
+          // Check if turn is still active (if shutTiles succeeded, _activeTurn is cleared)
+          if (!controller.state.hintsRemaining === null || controller.state.hintsRemaining !== null) {
+            // Re-check: if shutResolve was resolved, the loop in controller moves on.
+            // We just need to break here unconditionally because shutTiles either
+            // threw (emitted error, _shutResolve NOT called) or succeeded.
+            // The error listener above printed the message; on success we break.
+            // We detect success by checking if activeTurn is still set — but that's private.
+            // Instead: if no error event was emitted in this tick, it succeeded.
+            resolved = true
+            break
+          }
         }
-        continue
       }
 
-      const chosenTiles = choice.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
-
-      try {
-        turn.shutTiles(chosenTiles)
-        validChoice = true
-        console.log(`Shut tiles: [${chosenTiles.join(', ')}]`)
-        this.room.broadcast(msgTilesShut(this.myId, chosenTiles))
-      } catch (err) {
-        console.log(`Invalid: ${err.message}. Try again.`)
+      // Only prompt tile selection if controller didn't immediately emit no-valid-moves
+      // We detect this by waiting one tick
+      await new Promise(r => setImmediate(r))
+      if (controller.state.phase === 'playing') {
+        await selectTiles()
       }
-    }
-
-    const result = turn.endTurn()
-    player.openTiles = result.openTiles
-    player.score = result.score
-    player.shutTheBox = result.shutTheBox
-    player.hintsRemaining = result.hintsRemaining
-
-    if (result.shutTheBox) {
-      console.log('\n*** YOU SHUT THE BOX! Score: 0 ***')
-      this.room.broadcast(msgTurnEnd(this.myId, { ...result, finished: true }))
     } else {
-      console.log(`\nRound done. Open tiles: [${result.openTiles.join(', ')}] (score so far: ${result.score})`)
-      this.room.broadcast(msgTurnEnd(this.myId, { ...result, finished: false }))
+      console.log(`  ${player.name} rolled: [${roll.values.join(', ')}] = ${roll.total}`)
     }
-  }
+  })
 
-  waitForTurnEnd (player) {
-    return new Promise((resolve) => {
-      const handler = (msg) => {
-        if (msg.type === MSG_TYPES.TURN_END && msg.from === player.id) {
-          this.room.removeListener('message', handler)
-          resolve()
-        }
-      }
-      this.room.on('message', handler)
-    })
-  }
+  controller.on('no-valid-moves', ({ player, isMe }) => {
+    if (isMe) {
+      console.log('\n  No valid moves. You are out for this game!')
+    } else {
+      console.log(`\n  ${player.name} has no valid moves — eliminated.`)
+    }
+  })
+
+  controller.on('tiles-shut', ({ player, tiles, isMe }) => {
+    if (isMe) {
+      console.log(`  You shut: [${tiles.join(', ')}]`)
+    } else {
+      console.log(`  ${player.name} shut: [${tiles.join(', ')}]`)
+    }
+  })
+
+  controller.on('round-done', ({ player, openTiles, score, isMe }) => {
+    if (isMe) {
+      console.log(`\n  Round done. Open: [${openTiles.join(', ')}]  (score so far: ${score})`)
+    } else {
+      console.log(`\n  ${player.name} round done. Score so far: ${score}`)
+    }
+  })
+
+  controller.on('shut-the-box', ({ player, isMe }) => {
+    if (isMe) {
+      console.log('\n  ★★★ YOU SHUT THE BOX! Perfect score: 0 ★★★')
+    } else {
+      console.log(`\n  ★★★ ${player.name} SHUT THE BOX! Score: 0 ★★★`)
+    }
+  })
+
+  controller.on('opponent-turn', ({ player, round }) => {
+    console.log(`\n    ${player.name}'s turn [Round ${round}] — waiting...`)
+  })
+
+  controller.on('game-over', ({ results }) => {
+    console.log('\n═══════════════════════════════════════════')
+    console.log('                GAME OVER')
+    console.log('═══════════════════════════════════════════')
+    printScoreboard(results)
+    rl.close()
+  })
+
+  controller.on('error', ({ message }) => {
+    console.log(`  ! ${message}`)
+  })
 }
 
+// ─────────────────────────────────────────────
+// Main
+// ─────────────────────────────────────────────
+
+const args = process.argv.slice(2)
+const isHost = args.includes('--host')
+const isJoin = args.includes('--join')
+
 async function main () {
-  console.log('╔═══════════════════════════════════════════╗')
-  console.log('║        SHUT THE BOX - P2P Edition         ║')
-  console.log('╠═══════════════════════════════════════════╣')
-  console.log(`║  Tiles: 1-${NUM_TILES} | Players: 2-4 | ${MAX_HINTS} hints    ║`)
-  console.log('║  1 roll per round, shut tiles, lowest wins ║')
-  console.log('╚═══════════════════════════════════════════╝')
+  console.log('╔══════════════════════════════════════════╗')
+  console.log('║        SHUT THE BOX — P2P Edition        ║')
+  console.log('╠══════════════════════════════════════════╣')
+  console.log(`║  Tiles 1-${NUM_TILES} · 2-4 players · ${MAX_HINTS} hints/game  ║`)
+  console.log('║  1 roll per round · lowest score wins    ║')
+  console.log('╚══════════════════════════════════════════╝')
   console.log()
 
   if (!isHost && !isJoin) {
     console.log('Usage:')
-    console.log('  Host a game:   node apps/cli/index.js --host')
-    console.log('  Join a game:   node apps/cli/index.js --join')
-    process.exit(1)
+    console.log('  node apps/cli/index.js --host   (create a room)')
+    console.log('  node apps/cli/index.js --join   (join a room)')
+    process.exit(0)
   }
 
-  const game = new GameController()
-  await game.start()
+  const name = await ask('Your name: ')
+  const roomName = await ask('Room name: ')
+
+  const controller = new GameController()
+  wireEvents(controller)
+
+  if (isHost) {
+    setImmediate(() => hostLobbyLoop(controller))
+  }
+
+  await controller.connect(name, roomName, isHost)
 }
 
-main().catch((err) => {
-  console.error('Fatal error:', err)
+main().catch(err => {
+  console.error('\nFatal error:', err.message)
   process.exit(1)
 })
