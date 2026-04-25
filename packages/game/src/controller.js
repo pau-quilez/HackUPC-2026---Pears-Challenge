@@ -266,8 +266,14 @@ export class GameController extends EventEmitter {
     await this._gameLoop()
   }
 
-  // ── Game loop ──────────────────────────────────────────────────────
+  // ── Game loop (token ring) ─────────────────────────────────────────
 
+  /**
+   * Turn order: fixed ring over `this.players` (sorted by peer id at game start).
+   * Each *round* walks indices 0..n-1; eliminated / shut-the-box players are skipped.
+   * Next round repeats the same order — a classic round-robin "token" that cycles
+   * until everyone is done. All peers use the same list from `game-start` payload.
+   */
   async _gameLoop () {
     while (this.phase === GAME_PHASES.PLAYING && !this._allPlayersFinished()) {
       this.round++
@@ -432,7 +438,12 @@ export class GameController extends EventEmitter {
   _handleMessage (msg) {
     switch (msg.type) {
       case MSG_TYPES.PLAYER_JOIN: {
-        if (!this.players.find(p => p.id === msg.from)) {
+        if (this.players.find(p => p.id === msg.from)) break
+        if (this.phase === GAME_PHASES.LOBBY && this.players.length >= MAX_PLAYERS) {
+          this.emit('error', { message: `Room is full (max ${MAX_PLAYERS} players)` })
+          break
+        }
+        {
           const player = this._makePlayer(msg.from, msg.payload.name)
           this.players.push(player)
           this.emit('player-joined', { player, players: this.players })
@@ -443,6 +454,10 @@ export class GameController extends EventEmitter {
 
       case MSG_TYPES.GAME_START: {
         if (this.phase !== GAME_PHASES.LOBBY) break
+        if (msg.payload.players.length < MIN_PLAYERS || msg.payload.players.length > MAX_PLAYERS) {
+          this.emit('error', { message: `Invalid game start: need ${MIN_PLAYERS}-${MAX_PLAYERS} players` })
+          break
+        }
 
         this.phase = GAME_PHASES.PLAYING
 

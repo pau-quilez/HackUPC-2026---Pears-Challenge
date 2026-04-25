@@ -8,7 +8,7 @@
 
 import readline from 'node:readline'
 import { GameController } from '@shut-the-box/game'
-import { NUM_TILES, MAX_HINTS, MIN_PLAYERS, shortId } from '@shut-the-box/shared'
+import { NUM_TILES, MAX_HINTS, MIN_PLAYERS, MAX_PLAYERS, shortId } from '@shut-the-box/shared'
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
 const ask = (q) => new Promise(resolve => rl.question(q, resolve))
@@ -236,7 +236,7 @@ async function main () {
   console.log('╔══════════════════════════════════════════╗')
   console.log('║        SHUT THE BOX — P2P Edition        ║')
   console.log('╠══════════════════════════════════════════╣')
-  console.log(`║  Tiles 1-${NUM_TILES} · 2-4 players · ${MAX_HINTS} hints/game  ║`)
+  console.log(`║  Tiles 1-${NUM_TILES} · ${MIN_PLAYERS}-${MAX_PLAYERS} players · ${MAX_HINTS} hints  ║`)
   console.log('║  1 roll per round · lowest score wins    ║')
   console.log('╚══════════════════════════════════════════╝')
   console.log()

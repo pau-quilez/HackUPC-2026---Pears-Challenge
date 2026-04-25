@@ -4,7 +4,7 @@ dist/
 Thumbs.db
 *.log
 
-# Local storage (Hypercore/Hyperbee data)
+# Local storage (Hypercore/Hyperbee) — do not commit; each peer’s cache only
 data/
 
 # IDE

@@ -24,7 +24,7 @@ The core of the application. An `EventEmitter` with **zero I/O** that drives the
 | Method | When |
 |---|---|
 | `connect(name, room, mode)` | Join/create a P2P room (`mode`: `'create'` or `'join'`) |
-| `startGame()` | Any player can start when 2-4 players are in the lobby |
+| `startGame()` | Any player can start when `MIN_PLAYERS`–`MAX_PLAYERS` are in the lobby |
 | `roll()` | Roll dice during your turn |
 | `shutTiles([3, 5])` | Shut selected tiles (must sum to dice total) |
 | `useHint()` | Spend a hint to see valid combinations |
@@ -62,7 +62,7 @@ The core of the application. An `EventEmitter` with **zero I/O** that drives the
 | Parameter | Value | Constant |
 |---|---|---|
 | Tiles | 1–12 | `NUM_TILES` |
-| Players | 2–4 | `MIN_PLAYERS` / `MAX_PLAYERS` |
+| Players | 2–6 | `MIN_PLAYERS` (2) / `MAX_PLAYERS` (6) |
 | Dice | 2 six-sided | `DICE_COUNT` / `DICE_SIDES` |
 | Single-die threshold | ≤ 3 | `SINGLE_DIE_THRESHOLD` |
 | Hints per player | 3 | `MAX_HINTS` |

@@ -15,7 +15,14 @@ Shut the Box is a classic dice game where players try to "shut" (close) numbered
 ### Setup
 
 - The board has **12 tiles** numbered **1 through 12**, all starting open.
-- **2 to 4 players** can play in the same game.
+- **2 to 6 players** can play in the same game (see `MAX_PLAYERS` in `@shut-the-box/shared`).
+
+### Turn order (round-robin / token ring)
+
+- At **game start**, all peers agree on the same ordered list: players are sorted by **peer id** (string compare).
+- Each **round**, play passes **once** over that list: player 0 → 1 → … → n−1.
+- The next **round** repeats the **same** order. Players who are eliminated or who shut the box are **skipped** but their slot stays in the list so everyone stays in sync.
+- This is a fixed **round-robin** schedule — there is no random turn order; it matches a token passing around a ring.
 - Each player gets **3 hints** per game (to reveal valid tile combinations).
 
 ### How a round works

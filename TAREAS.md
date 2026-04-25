@@ -297,7 +297,7 @@
 
 - [ ] **8.6 Tests de edge cases**
   - Jugador se desconecta a mitad de turno
-  - Sala llena (5to jugador intenta unirse)
+  - Sala llena (jugador n.º 7+ cuando `MAX_PLAYERS` = 6)
   - Host se desconecta
   - Dos jugadores con el mismo nombre
   - Conexión lenta o con pérdida de paquetes

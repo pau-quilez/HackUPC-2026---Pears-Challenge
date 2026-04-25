@@ -44,15 +44,19 @@ await closeDatabase({ core })
 
 ## Data location
 
-All storage goes under the `data/` directory (git-ignored):
+All storage lives under the `data/` directory, which is **only on your machine**:
+
+- Listed in **`.gitignore`** — the folder is **not** part of the Git repository (no `data/` in GitHub or remotes after `git rm -r --cached data` once).
+- Recreated automatically when a match runs (`createDatabase` creates paths as needed).
+- Safe to delete `data/` anytime; the next game creates fresh stores.
 
 ```
 data/
-  matches/<matchId>/    ← Hypercore files for each game
-  test/                 ← Test databases (auto-cleaned)
+  matches/<matchId>/    ← Per-match Hypercore + Hyperbee
+  test/                 ← Test databases (if used)
 ```
 
-Deleting `data/` is safe — it regenerates automatically on the next game.
+Deleting `data/` is safe — it regenerates on the next game.
 
 ## Design notes
 

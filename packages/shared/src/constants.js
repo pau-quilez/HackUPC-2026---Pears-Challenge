@@ -2,7 +2,8 @@ export const NUM_TILES = 12
 export const TILES = Array.from({ length: NUM_TILES }, (_, i) => i + 1)
 
 export const MIN_PLAYERS = 2
-export const MAX_PLAYERS = 4
+/** Max peers in a room. Turn order = fixed ring (see GameController). */
+export const MAX_PLAYERS = 6
 
 export const DICE_COUNT = 2
 export const DICE_SIDES = 6

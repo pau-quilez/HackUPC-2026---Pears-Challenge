@@ -18,7 +18,7 @@ Shared constants, configuration, and utility functions used by all other package
 | `NUM_TILES` | 12 | Number of tiles on the board |
 | `TILES` | `[1..12]` | Array of tile numbers |
 | `MIN_PLAYERS` | 2 | Minimum players to start |
-| `MAX_PLAYERS` | 4 | Maximum players allowed |
+| `MAX_PLAYERS` | 6 | Maximum players in a room |
 | `DICE_COUNT` | 2 | Number of dice |
 | `DICE_SIDES` | 6 | Sides per die |
 | `SINGLE_DIE_THRESHOLD` | 3 | Roll 1 die if open tiles sum ≤ this |
