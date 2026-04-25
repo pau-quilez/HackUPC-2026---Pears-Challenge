@@ -49,7 +49,12 @@ class GameController {
     this.currentPlayerIndex = 0
     this.myId = null
     this.isHost = false
+    this.hostId = null
     this.round = 0
+    this._inHostLobby = false
+    this._waitingTurnPeerId = null
+    this._waitingTurnResolver = null
+    this._gameEnded = false
   }
 
   getMyPlayer () {
@@ -64,6 +69,7 @@ class GameController {
     this.isHost = isHost
 
     this.room.on('message', (msg) => this.handleMessage(msg))
+    this.room.on('peer-disconnected', (peerId) => this.handlePeerDisconnected(peerId))
 
     if (isHost) {
       await this.room.host(roomName)
@@ -72,6 +78,7 @@ class GameController {
     }
 
     this.myId = this.room.myId
+    this.hostId = this.isHost ? this.myId : null
     this.players.push({
       id: this.myId,
       name,
@@ -85,7 +92,12 @@ class GameController {
     console.log(`\nWaiting for players... (${this.isHost ? 'you are the host' : 'waiting for host to start'})`)
 
     if (this.isHost) {
-      await this.hostLobby()
+      this._inHostLobby = true
+      try {
+        await this.hostLobby()
+      } finally {
+        this._inHostLobby = false
+      }
     } else {
       await this.waitForStart()
     }
@@ -142,6 +154,8 @@ class GameController {
 
       case MSG_TYPES.GAME_START: {
         this.phase = GAME_PHASES.PLAYING
+        this.hostId = msg.from
+        this.isHost = this.myId === this.hostId
         const serverPlayers = msg.payload.players
         for (const sp of serverPlayers) {
           if (!this.players.find(p => p.id === sp.id)) {
@@ -211,9 +225,103 @@ class GameController {
         console.log('\n========== GAME OVER ==========')
         printScoreboard(msg.payload.results)
         this.phase = GAME_PHASES.FINISHED
+        if (this._waitingTurnResolver) this._waitingTurnResolver()
         break
       }
     }
+  }
+
+  handlePeerDisconnected (peerId) {
+    const index = this.players.findIndex(p => p.id === peerId)
+    if (index === -1) return
+
+    const [removed] = this.players.splice(index, 1)
+    console.log(`\n>>> ${removed.name} disconnected.`)
+
+    if (index <= this.currentPlayerIndex && this.currentPlayerIndex > 0) {
+      this.currentPlayerIndex--
+    }
+
+    if (peerId === this.hostId) {
+      this.reassignHost()
+    }
+
+    if (this._waitingTurnPeerId === peerId && this._waitingTurnResolver) {
+      console.log('Turn owner disconnected. Skipping turn...')
+      this._waitingTurnResolver()
+    }
+
+    if (this.phase === GAME_PHASES.LOBBY && this.isHost && !this._inHostLobby) {
+      if (this._startResolve) {
+        this._startResolve()
+        this._startResolve = null
+      }
+      this._inHostLobby = true
+      this.hostLobby()
+        .catch((err) => console.error('Lobby error after host migration:', err))
+        .finally(() => {
+          this._inHostLobby = false
+        })
+      return
+    }
+
+    if (this.phase === GAME_PHASES.PLAYING && this.players.length < MIN_PLAYERS) {
+      this.endDueToInsufficientPlayers()
+    }
+  }
+
+  reassignHost () {
+    if (this.players.length === 0) {
+      this.hostId = null
+      this.isHost = false
+      return
+    }
+
+    const oldHostId = this.hostId
+    const nextHost = [...this.players].sort((a, b) => a.id.localeCompare(b.id))[0]
+    this.hostId = nextHost.id
+    this.isHost = this.myId === this.hostId
+
+    if (oldHostId !== this.hostId) {
+      console.log(`>>> Host disconnected. New host: ${nextHost.name} (${shortId(nextHost.id)})`)
+      if (this.isHost) {
+        console.log('>>> You are now the host.')
+      }
+    }
+  }
+
+  buildResults () {
+    return this.players.map(p => ({
+      id: p.id,
+      name: p.name,
+      score: p.shutTheBox ? 0 : calculateScore(p.openTiles),
+      shutTheBox: p.shutTheBox
+    }))
+  }
+
+  endDueToInsufficientPlayers () {
+    if (this._gameEnded) return
+    this._gameEnded = true
+    this.phase = GAME_PHASES.FINISHED
+
+    console.log(`\nNot enough players connected (minimum ${MIN_PLAYERS}). Ending game.`)
+
+    if (this._waitingTurnResolver) {
+      this._waitingTurnResolver()
+    }
+
+    const results = this.buildResults()
+    if (results.length > 0) {
+      printScoreboard(results)
+      if (this.isHost) {
+        this.room.broadcast(msgGameOver(this.myId, results))
+      }
+    }
+
+    rl.close()
+    this.room.destroy().catch((err) => {
+      console.error('Error while closing room:', err)
+    })
   }
 
   allPlayersFinished () {
@@ -222,11 +330,13 @@ class GameController {
 
   async gameLoop () {
     // Rounds continue until all players are finished (no valid moves or shut the box)
-    while (!this.allPlayersFinished()) {
+    while (this.phase === GAME_PHASES.PLAYING && !this.allPlayersFinished()) {
       this.round++
       console.log(`\n========== ROUND ${this.round} ==========`)
 
       for (let i = 0; i < this.players.length; i++) {
+        if (this.phase !== GAME_PHASES.PLAYING) break
+
         this.currentPlayerIndex = i
         const player = this.players[i]
 
@@ -244,15 +354,15 @@ class GameController {
           await this.waitForTurnEnd(player)
         }
       }
+
+      if (this.phase !== GAME_PHASES.PLAYING) break
     }
 
+    if (this._gameEnded) return
+    if (this.phase !== GAME_PHASES.PLAYING && !this.allPlayersFinished()) return
+
     this.phase = GAME_PHASES.FINISHED
-    const results = this.players.map(p => ({
-      id: p.id,
-      name: p.name,
-      score: p.shutTheBox ? 0 : calculateScore(p.openTiles),
-      shutTheBox: p.shutTheBox
-    }))
+    const results = this.buildResults()
 
     if (this.isHost) {
       this.room.broadcast(msgGameOver(this.myId, results))
@@ -261,6 +371,7 @@ class GameController {
     console.log('\n========== GAME OVER ==========')
     printScoreboard(results)
     rl.close()
+    this._gameEnded = true
     await this.room.destroy()
   }
 
@@ -333,12 +444,22 @@ class GameController {
 
   waitForTurnEnd (player) {
     return new Promise((resolve) => {
+      this._waitingTurnPeerId = player.id
+
+      const finish = () => {
+        this.room.removeListener('message', handler)
+        this._waitingTurnPeerId = null
+        this._waitingTurnResolver = null
+        resolve()
+      }
+
       const handler = (msg) => {
         if (msg.type === MSG_TYPES.TURN_END && msg.from === player.id) {
-          this.room.removeListener('message', handler)
-          resolve()
+          finish()
         }
       }
+
+      this._waitingTurnResolver = finish
       this.room.on('message', handler)
     })
   }
