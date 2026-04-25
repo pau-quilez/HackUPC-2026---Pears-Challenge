@@ -25,19 +25,16 @@ This project leverages the recommended tools for the Pear Hackathon track to ens
 
 | Category | Technology Used |
 | :--- | :--- |
-| **Frontend** | React / Tailwind CSS / HTML5 |
-| **P2P & Networking** | Node.js, Pear Protocol, Hyperswarm (DHT-based swarming) |
-| **Data Storage** | Hypercore Protocol (Distributed ledgers) |
-| **Security** | End-to-end encryption for payload data |
+| **Frontend** | Work in progress... |
+| **P2P & Networking** | Work in progress... |
+| **Data Storage** | Work in progress... |
+| **Security** | Work in progress... |
 
 ---
 
 ## 🏗️ Architecture & How It Works
 
-1. **Room Creation (Topic Generation):** When a user creates a room, a unique cryptographic 32-byte key (Topic) is generated. 
-2. **Peer Discovery:** Other users input this Topic. Hyperswarm uses the DHT to find peers announcing this specific Topic and establishes direct, hole-punched connections.
-3. **State Management:** Every action—whether it's sending a secret note or rolling the dice in *Shut the Box*—is appended to a local Hypercore ledger.
-4. **Swarm Synchronization:** The Hypercore protocol automatically replicates these local append-only logs across all connected peers, updating the React UI in real-time.
+| Work in progress... |
 
 ---
 
@@ -45,13 +42,5 @@ This project leverages the recommended tools for the Pear Hackathon track to ens
 
 Follow these steps to run PearRoom locally on your machine.
 
-### Prerequisites
-* [Node.js](https://nodejs.org/) (v18 or higher recommended)
-* Pear Runtime (if applicable based on your setup)
+| Work in progress... |
 
-### Installation
-
-1. **Clone the repository:**
-   ```bash
-   git clone [https://github.com/your-username/pear-room.git](https://github.com/your-username/pear-room.git)
-   cd pear-room
