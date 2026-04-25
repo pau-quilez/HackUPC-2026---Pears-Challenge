@@ -27,3 +27,10 @@ ehthumbs.db
 
 # TODO file (personal notes)
 TODO
+
+# test storage
+.test-matchstore/
+.test-replay/
+.test-storage-eventlog/
+.test-storage-matchstore/
+.test-storage-replay/
