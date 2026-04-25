@@ -1,0 +1,17 @@
+{
+  "name": "@shut-the-box/p2p",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./swarm": "./src/swarm.js",
+    "./room": "./src/room.js",
+    "./messages": "./src/messages.js"
+  },
+  "dependencies": {
+    "@shut-the-box/shared": "*",
+    "hyperswarm": "^4.17.0",
+    "b4a": "^1.6.7"
+  }
+}

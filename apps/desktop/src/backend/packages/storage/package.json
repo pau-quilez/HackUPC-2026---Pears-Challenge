@@ -1,0 +1,17 @@
+{
+  "name": "@shut-the-box/storage",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./db": "./src/db.js",
+    "./eventLog": "./src/eventLog.js",
+    "./matchStore": "./src/matchStore.js"
+  },
+  "dependencies": {
+    "@shut-the-box/shared": "*",
+    "hypercore": "^11.28.1",
+    "hyperbee": "^2.27.3"
+  }
+}

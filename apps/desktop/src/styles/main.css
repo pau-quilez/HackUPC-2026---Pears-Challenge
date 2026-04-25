@@ -1,20 +1,385 @@
-/* Shut the Box - Desktop styles placeholder */
+:root {
+  --bg: #f6f7fb;
+  --panel: #ffffff;
+  --ink: #1f2937;
+  --subtle: #6b7280;
+  --line: #d1d5db;
+  --accent: #0ea5e9;
+  --accent-2: #22c55e;
+  --danger: #dc2626;
+}
+
 * {
-  margin: 0;
-  padding: 0;
   box-sizing: border-box;
 }
 
 body {
-  font-family: system-ui, -apple-system, sans-serif;
-  background: #1a1a2e;
-  color: #eee;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  margin: 0;
   min-height: 100vh;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  color: var(--ink);
+  background: radial-gradient(circle at 20% 20%, #e0f2fe 0%, transparent 35%),
+    radial-gradient(circle at 80% 10%, #dcfce7 0%, transparent 30%),
+    var(--bg);
+  padding: 24px;
 }
 
 #app {
-  text-align: center;
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 10px 32px rgba(17, 24, 39, 0.08);
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+.subtitle,
+.hint,
+.turn {
+  color: var(--subtle);
+}
+
+.connect-card {
+  max-width: 520px;
+  margin: 28px auto;
+}
+
+.form-grid {
+  margin-top: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+}
+
+input,
+select,
+button {
+  font: inherit;
+}
+
+input,
+select {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+button {
+  border: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.secondary {
+  background: #475569;
+}
+
+.status {
+  margin-top: 10px;
+  margin-bottom: 8px;
+}
+
+.actions {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.player-list {
+  margin: 14px 0 0;
+  padding-left: 20px;
+}
+
+.player-list li {
+  margin-bottom: 6px;
+}
+
+.game-card {
+  display: grid;
+  gap: 14px;
+}
+
+.game-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.roll-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--line);
+}
+
+.dice-scene {
+  width: 180px;
+  height: 76px;
+  perspective: 640px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-right: 8px;
+}
+
+.dice-cube {
+  width: 64px;
+  height: 64px;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 1.5s ease-out;
+}
+
+.dice-scene.rolling .dice-cube {
+  animation: dice-spin 320ms linear infinite;
+  transition: none;
+}
+
+.dice-cube.dimmed {
+  opacity: 0.4;
+}
+
+.dice-face {
+  position: absolute;
+  width: 64px;
+  height: 64px;
+  background: #ffffff;
+  border: 2px solid #cbd5e1;
+  border-radius: 10px;
+  box-shadow: inset 0 0 10px rgba(15, 23, 42, 0.08);
+}
+
+.face-1 { transform: translateZ(32px); }
+.face-2 { transform: rotateX(-90deg) translateZ(32px); }
+.face-3 { transform: rotateY(90deg) translateZ(32px); }
+.face-4 { transform: rotateY(-90deg) translateZ(32px); }
+.face-5 { transform: rotateX(90deg) translateZ(32px); }
+.face-6 { transform: rotateY(180deg) translateZ(32px); }
+
+.dot {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background-color: #1f2937;
+  border-radius: 50%;
+  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.25);
+}
+
+.dot-center       { top: 26px; left: 26px; }
+.dot-top-left     { top: 10px; left: 10px; }
+.dot-top-right    { top: 10px; right: 10px; }
+.dot-bottom-left  { bottom: 10px; left: 10px; }
+.dot-bottom-right { bottom: 10px; right: 10px; }
+.dot-middle-left  { top: 26px; left: 10px; }
+.dot-middle-right { top: 26px; right: 10px; }
+
+@keyframes dice-spin {
+  from { transform: rotateX(0deg) rotateY(0deg); }
+  to { transform: rotateX(360deg) rotateY(360deg); }
+}
+
+.boards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.player-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: #fafafa;
+}
+
+.player-card.mine {
+  border-color: #93c5fd;
+}
+
+.player-card.active {
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.25);
+}
+
+.player-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(24px, 1fr));
+  gap: 6px;
+}
+
+.tile {
+  aspect-ratio: 1 / 1;
+  border-radius: 8px;
+  border: 1px solid #94a3b8;
+  padding: 0;
+  font-weight: 700;
+  background: white;
+  color: #1e293b;
+}
+
+.tile.closed {
+  background: #e2e8f0;
+  color: #94a3b8;
+}
+
+.tile.selected {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+  color: white;
+}
+
+.player-card.color-yellow .tile.open {
+  background: #fef08a;
+  border-color: #eab308;
+  color: #713f12;
+}
+
+.player-card.color-yellow .tile.selected {
+  background: #eab308;
+  border-color: #ca8a04;
+  color: #111827;
+}
+
+.player-card.color-red .tile.open {
+  background: #fecaca;
+  border-color: #ef4444;
+  color: #7f1d1d;
+}
+
+.player-card.color-red .tile.selected {
+  background: #ef4444;
+  border-color: #dc2626;
+  color: #ffffff;
+}
+
+.player-card.color-green .tile.open {
+  background: #bbf7d0;
+  border-color: #22c55e;
+  color: #14532d;
+}
+
+.player-card.color-green .tile.selected {
+  background: #22c55e;
+  border-color: #16a34a;
+  color: #ffffff;
+}
+
+.player-card.color-blue .tile.open {
+  background: #bfdbfe;
+  border-color: #3b82f6;
+  color: #1e3a8a;
+}
+
+.player-card.color-blue .tile.selected {
+  background: #3b82f6;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+.end-card {
+  max-width: 520px;
+  margin: 24px auto;
+}
+
+.results {
+  margin-top: 12px;
+  padding-left: 20px;
+}
+
+.results li {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.error {
+  margin-top: 12px;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  body {
+    padding: 12px;
+  }
+
+  .card {
+    padding: 14px;
+  }
+
+  .tiles {
+    grid-template-columns: repeat(6, minmax(20px, 1fr));
+  }
+
+  .dice-scene {
+    width: 150px;
+    height: 66px;
+  }
+
+  .dice-cube {
+    width: 56px;
+    height: 56px;
+  }
+
+  .dice-face {
+    width: 56px;
+    height: 56px;
+  }
+
+  .face-1 { transform: translateZ(28px); }
+  .face-2 { transform: rotateX(-90deg) translateZ(28px); }
+  .face-3 { transform: rotateY(90deg) translateZ(28px); }
+  .face-4 { transform: rotateY(-90deg) translateZ(28px); }
+  .face-5 { transform: rotateX(90deg) translateZ(28px); }
+  .face-6 { transform: rotateY(180deg) translateZ(28px); }
+
+  .dot {
+    width: 10px;
+    height: 10px;
+  }
+
+  .dot-center       { top: 23px; left: 23px; }
+  .dot-top-left     { top: 9px; left: 9px; }
+  .dot-top-right    { top: 9px; right: 9px; }
+  .dot-bottom-left  { bottom: 9px; left: 9px; }
+  .dot-bottom-right { bottom: 9px; right: 9px; }
+  .dot-middle-left  { top: 23px; left: 9px; }
+  .dot-middle-right { top: 23px; right: 9px; }
 }

@@ -1,5 +1,5 @@
 import Hyperswarm from 'hyperswarm'
-import { createTopicBuffer } from '@shut-the-box/shared'
+import { createTopicBuffer } from '../../shared/src/index.js'
 import { EventEmitter } from 'node:events'
 
 export class SwarmManager extends EventEmitter {
