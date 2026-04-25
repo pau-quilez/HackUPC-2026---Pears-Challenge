@@ -1,38 +1,120 @@
-# Shut the Box - P2P Edition
+# Shut the Box — P2P Edition
 
-> **HackUPC 2026 - Pear Protocol Challenge**
+> **HackUPC 2026 — Pear Protocol Challenge**
 
-A fully decentralized, peer-to-peer multiplayer **Shut the Box** game. No servers, no cloud — just peers connected via Hyperswarm DHT hole-punching.
+A fully decentralized, peer-to-peer multiplayer **Shut the Box** dice game. No servers, no cloud — just peers connected via Hyperswarm DHT hole-punching.
 
 ---
 
-## How the Game Works
+## Game Rules
 
-**Shut the Box** is a classic dice game:
+### Overview
 
-1. The board has **12 tiles** numbered 1-12
-2. On your turn, **roll 2 dice** (or 1 die if your remaining tiles sum to 3 or less)
-3. **Shut (close) tiles** whose values add up to the dice total
-4. Each round you get **1 roll** — shut tiles, then next player
-5. If you can't make a valid combination, you're **eliminated**
-6. Your **score** = sum of remaining open tiles (lower is better)
-7. **Shut the Box** = close all tiles = score 0 (best possible!)
-8. All players take turns, **lowest score wins**
-9. Each player gets **3 hints** per game (type `hint` to see valid combos)
+Shut the Box is a classic dice game where players try to "shut" (close) numbered tiles by rolling dice. The goal is to close as many tiles as possible — **lowest score wins**.
 
-Supports **2-4 players** connected peer-to-peer. **No host** — any player can start the game.
+### Setup
+
+- The board has **12 tiles** numbered **1 through 12**, all starting open.
+- **2 to 4 players** can play in the same game.
+- Each player gets **3 hints** per game (to reveal valid tile combinations).
+
+### How a round works
+
+1. **Roll dice**: the active player rolls dice.
+   - Roll **2 dice** (values 2–12) normally.
+   - Roll **1 die** (values 1–6) if the sum of your remaining open tiles is **3 or less**.
+2. **Shut tiles**: choose one or more open tiles whose values **add up exactly** to the dice total.
+   - Example: you roll a **7** → you could shut `[7]`, or `[3, 4]`, or `[1, 2, 4]`, or `[2, 5]`, etc.
+   - Only tiles that are still open can be selected.
+3. **End of turn**: after shutting tiles, your turn ends and the next player goes.
+   - You only get **1 roll per round** (no re-rolls).
+
+### Elimination
+
+- If you roll and there is **no valid combination** of open tiles that sums to the dice total, you are **eliminated** from the game.
+- Your score is locked at the sum of your remaining open tiles.
+
+### Scoring
+
+- **Score = sum of your remaining open tiles** (lower is better).
+- **Shut the Box** = all tiles closed = **score 0** (the best possible result!).
+
+### Winning
+
+- The player with the **lowest score** wins.
+- If multiple players have the same score, it's a **tie** (shared victory).
+
+### Hints
+
+- During your turn, after rolling, you can type **`hint`** to see all valid tile combinations.
+- Each player has **3 hints** for the entire game — use them wisely!
+
+### Example turn
+
+```
+Your tiles:  [1] [2] [3] [4] [5] [6] [7] [8] [9] [10] [11] [12]
+You roll:    [4, 3] = 7
+
+Valid options:
+  1) [7]
+  2) [3, 4]
+  3) [2, 5]
+  4) [1, 6]
+  5) [1, 2, 4]
+
+You choose:  3, 4
+Result:      tiles 3 and 4 are now shut.
+
+Your tiles:  [1] [2] [X] [X] [5] [6] [7] [8] [9] [10] [11] [12]
+```
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- **Node.js** ≥ 18.0.0
+
+### Installation
+
+```bash
+git clone https://github.com/pau-quilez/HackUPC-2026---Pears-Challenge.git
+cd shut-the-box-p2p
+npm install
+```
+
+### Play
+
+Open **2 or more terminals** and run in each:
+
+```bash
+node apps/cli/index.js
+```
+
+1. Enter your name
+2. Choose **1** (create) or **2** (join)
+3. Enter the **same room name** in all terminals
+4. Type **`start`** when everyone is in the lobby
+5. Play! Type tile numbers to shut them (e.g. `3,5`), type `hint` for help
+
+### Run tests
+
+```bash
+npm test
+```
 
 ---
 
 ## Tech Stack
 
 | Category | Technology |
-| :--- | :--- |
+|---|---|
 | **Runtime** | Node.js (ESM) |
-| **P2P Networking** | Hyperswarm (DHT-based swarming, UDP hole-punching) |
-| **Data Storage** | Hypercore + Hyperbee (append-only log + B-tree KV store) |
-| **Desktop UI** | Pear Protocol (planned) |
-| **CLI** | Node.js readline |
+| **P2P Networking** | [Hyperswarm](https://github.com/holepunchto/hyperswarm) — DHT swarming + UDP hole-punching |
+| **Data Storage** | [Hypercore](https://github.com/holepunchto/hypercore) + [Hyperbee](https://github.com/holepunchto/hyperbee) — append-only log + B-tree KV store |
+| **Desktop UI** | [Pear Protocol](https://pears.com/) (planned) |
+| **CLI** | Node.js `readline` |
 
 ---
 
@@ -41,144 +123,72 @@ Supports **2-4 players** connected peer-to-peer. **No host** — any player can 
 ```
 shut-the-box-p2p/
 ├── apps/
-│   ├── cli/                    # CLI game client (playable now!)
-│   │   ├── index.js            # Thin adapter — only renders & routes input
-│   │   └── package.json
-│   └── desktop/                # Pear Desktop UI (planned)
-│       ├── index.html
-│       └── src/
+│   ├── cli/                 → CLI game client
+│   └── desktop/             → Pear Desktop UI (planned)
 ├── packages/
-│   ├── shared/                 # Constants, utilities
-│   │   └── src/
-│   │       ├── constants.js    # Tiles, dice, game phases, message types
-│   │       └── utils.js        # Crypto helpers, topic buffer, IDs
-│   ├── game/                   # Game logic (pure, no I/O)
-│   │   └── src/
-│   │       ├── dice.js         # Dice rolling
-│   │       ├── rules.js        # Board, combinations, scoring
-│   │       ├── turn.js         # Turn state machine
-│   │       ├── validateMove.js # Move validation
-│   │       ├── controller.js   # GameController (event-driven orchestrator)
-│   │       └── index.js        # Public exports
-│   ├── p2p/                    # P2P networking layer
-│   │   └── src/
-│   │       ├── swarm.js        # Hyperswarm wrapper
-│   │       ├── room.js         # Room management (create/join)
-│   │       └── messages.js     # JSON message protocol
-│   └── storage/                # Persistent storage (Hyperbee)
-│       └── src/
-│           ├── db.js           # Database setup
-│           ├── schema.js       # Key schema (match/event/stats)
-│           ├── eventLog.js     # Append-only event log
-│           └── matchStore.js   # Match & player stats persistence
-├── data/                       # Local storage (git-ignored)
-│   ├── matches/                # Game data per match
-│   └── test/                   # Test storage
-├── tests/                      # Unit tests
-│   ├── game.test.js
-│   ├── p2p.test.js
-│   ├── storage.test.js
-│   └── run.js                  # Custom test runner with catalog
-├── docs/                       # Documentation
-├── TAREAS.md                   # Task breakdown (Spanish)
-├── package.json                # Root workspace config
-├── .gitignore
-└── README.md
+│   ├── shared/              → Constants and utilities
+│   ├── game/                → Game logic + GameController
+│   ├── p2p/                 → P2P networking (Hyperswarm)
+│   └── storage/             → Persistent storage (Hyperbee)
+├── data/                    → Local game data (git-ignored, auto-generated)
+├── tests/                   → Unit tests (26 tests)
+├── docs/                    → Documentation
+└── TAREAS.md                → Task breakdown
 ```
 
-### Module Responsibilities
+### Package documentation
 
-| Module | What it does | Dependencies |
-| :--- | :--- | :--- |
-| `@shut-the-box/shared` | Constants, utility functions | None |
-| `@shut-the-box/game` | Game rules, dice, turns, validation, GameController | shared, p2p, storage |
-| `@shut-the-box/p2p` | Hyperswarm connections, rooms, messaging | shared, hyperswarm |
-| `@shut-the-box/storage` | Hyperbee persistence, match/event history | shared, hypercore, hyperbee |
-| `@shut-the-box/cli` | Interactive CLI client (thin adapter) | game, shared |
-| `@shut-the-box/desktop` | Pear desktop UI (planned) | game, shared |
+Each package has its own README with detailed API documentation:
 
----
+| Package | README | Description |
+|---|---|---|
+| `@shut-the-box/shared` | [`packages/shared/README.md`](packages/shared/README.md) | Constants, configuration, utility functions |
+| `@shut-the-box/game` | [`packages/game/README.md`](packages/game/README.md) | Game rules, dice, turns, GameController |
+| `@shut-the-box/p2p` | [`packages/p2p/README.md`](packages/p2p/README.md) | Hyperswarm rooms, message protocol |
+| `@shut-the-box/storage` | [`packages/storage/README.md`](packages/storage/README.md) | Hyperbee persistence, event log, match store |
+| CLI | [`apps/cli/README.md`](apps/cli/README.md) | How to run, CLI commands |
 
-## Getting Started
+### Additional docs
 
-### Prerequisites
-
-- **Node.js** >= 18.0.0
-
-### Installation
-
-```bash
-git clone <repo-url>
-cd shut-the-box-p2p
-npm install
-```
-
-### Running the Game (CLI)
-
-You need **2 or more terminals** (same machine or different machines on the network).
-
-**Terminal 1:**
-
-```bash
-node apps/cli/index.js
-```
-
-**Terminal 2 (and 3, 4):**
-
-```bash
-node apps/cli/index.js
-```
-
-**Steps:**
-1. Enter your name
-2. Choose: **1** to create a game, **2** to join
-3. All players enter the **same room name** (creates a shared topic on the DHT)
-4. In the lobby, press ENTER to refresh player list
-5. **Any player** can type `start` to begin when there are 2+ players
-6. Take turns rolling dice and shutting tiles
-7. Type `hint` to see valid combinations (3 hints per game)
-8. Lowest score wins!
-
-### Running Tests
-
-```bash
-npm test
-```
-
-### Quick Commands Reference
-
-| Command | Description |
-| :--- | :--- |
-| `npm install` | Install all dependencies |
-| `npm test` | Run full test suite with catalog |
-| `npm run test:quick` | Quick tests without catalog |
-| `node apps/cli/index.js` | Start the game |
+- [Test documentation](docs/tests.md) — detailed description of all 26 tests
 
 ---
 
 ## Architecture
 
-### GameController (event-driven)
-
-The `GameController` in `packages/game/src/controller.js` is the core orchestrator:
-
-- **Zero I/O** — no console.log, no readline
-- **Event emitter** — UI layers listen and render
-- **Action-based** — UI calls `roll()`, `shutTiles()`, `startGame()`
-- **Symmetric** — no host/guest distinction, any player can start
-- **Storage integrated** — logs events and persists match results to Hyperbee
-
 ```
-UI (CLI/Desktop)  ←→  GameController  ←→  Room (P2P)  ←→  Other Peers
-                           ↕
-                      Storage (Hyperbee)
+┌──────────────┐     events      ┌──────────────────┐    broadcast    ┌──────────────┐
+│   CLI / UI   │ ◄────────────── │  GameController   │ ──────────────► │  Other Peers  │
+│  (thin layer)│ ──────────────► │  (event emitter)  │ ◄────────────── │  (Hyperswarm) │
+└──────────────┘     actions     └────────┬─────────┘    messages     └──────────────┘
+                                          │
+                                          ▼
+                                  ┌──────────────┐
+                                  │   Hyperbee   │
+                                  │  (local DB)  │
+                                  └──────────────┘
 ```
 
-### Failure Tolerance
+- **Symmetric model**: no host — any player can create or join, any player can start.
+- **Zero I/O in packages**: all console output lives in the CLI adapter only.
+- **Failure tolerant**: disconnections are handled, turns skipped, game aborted if < 2 players.
 
-- Peer disconnections are detected and the player is removed
-- If a player disconnects during their turn, it's automatically skipped
-- If fewer than 2 players remain, the game is aborted with partial results
+### Data storage
+
+Game data is stored locally under `data/` (git-ignored). Each match creates its own Hypercore + Hyperbee database.
+
+**Deleting `data/` is safe** — it regenerates automatically on the next game. No data is shared between peers; each peer stores its own history.
+
+---
+
+## Commands Reference
+
+| Command | Description |
+|---|---|
+| `npm install` | Install all dependencies |
+| `npm test` | Run full test suite (26 tests) with catalog |
+| `npm run test:quick` | Quick tests without catalog |
+| `node apps/cli/index.js` | Start the game |
 
 ---
 
@@ -193,7 +203,7 @@ UI (CLI/Desktop)  ←→  GameController  ←→  Room (P2P)  ←→  Other Peer
 - [x] Failure tolerance (peer disconnect handling)
 - [ ] Desktop UI (Pear Protocol)
 - [ ] Cross-machine play testing
-- [ ] Deploy with Pear (pear:// link)
+- [ ] Deploy with Pear (`pear://` link)
 
 ---
 
