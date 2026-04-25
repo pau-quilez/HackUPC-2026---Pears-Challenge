@@ -109,35 +109,35 @@
 > Actualmente el controlador está dentro de `apps/cli/index.js`, acoplado al terminal.
 > Hay que extraerlo para que sea reutilizable por CLI y Desktop.
 
-- [ ] **4.1 Extraer GameController a un módulo independiente**
-  - Mover la lógica de orquestación a `packages/game/src/controller.js` (o `packages/engine/`)
-  - El controller no debe depender de readline, console.log ni ningún I/O
-  - Debe emitir eventos que la UI (CLI o Desktop) escuche y renderice
-  - Debe recibir acciones de la UI (roll, shutTiles, startGame)
+- [x] **4.1 Extraer GameController a un módulo independiente**
+  - `packages/game/src/controller.js` — extiende EventEmitter, cero I/O
+  - Sin dependencia de readline, console.log ni ningún terminal
+  - Emite: `waiting`, `lobby-updated`, `player-joined`, `game-started`, `round-start`, `my-turn`, `opponent-turn`, `roll-result`, `no-valid-moves`, `tiles-shut`, `round-done`, `shut-the-box`, `game-over`, `error`
+  - Acepta acciones: `connect()`, `startGame()`, `roll()`, `shutTiles()`, `useHint()`
+  - `apps/cli/index.js` reescrito como adaptador fino (solo escucha eventos y llama acciones)
 
-- [ ] **4.2 Fase Lobby**
-  - Esperar a que se conecten jugadores (mínimo 2, máximo 4)
-  - Mostrar lista de jugadores conectados en tiempo real
-  - Solo el host puede iniciar la partida
-  - Validar que hay suficientes jugadores antes de empezar
+- [x] **4.2 Fase Lobby**
+  - Host espera en `_lobbyPhase()` hasta que la UI llame `startGame()`
+  - Emite `player-joined` y `lobby-updated` en tiempo real cuando llega un peer
+  - `startGame()` valida `isHost`, `MIN_PLAYERS` y `MAX_PLAYERS` antes de proceder
+  - Guest espera `GAME_START` del host via `_guestStartResolve`
 
-- [ ] **4.3 Fase Playing**
-  - Gestionar turnos secuenciales (jugador 1, 2, 3, 4, luego acaba)
-  - En tu turno: puedes tirar dados y elegir tiles
-  - En turno de otro: solo recibes y muestras sus acciones
-  - Sincronizar el estado entre todos los peers via mensajes
+- [x] **4.3 Fase Playing**
+  - `_gameLoop()` itera jugadores en orden secuencial por ronda
+  - Turno propio: `_playMyTurn()` bloquea con Promises hasta que la UI llama `roll()` y `shutTiles()`
+  - Turno ajeno: bloquea en `_opponentResolve` hasta recibir `TURN_END` del peer
+  - Estado sincronizado via mensajes: `DICE_ROLL`, `TILES_SHUT`, `TURN_END`
 
-- [ ] **4.4 Fase Finished**
-  - Calcular ranking: ordena jugadores por puntuación ascendente
-  - Declarar ganador (menor puntuación)
-  - Empate: ambos jugadores comparten la victoria
-  - El host envía `game-over` con los resultados finales
+- [x] **4.4 Fase Finished**
+  - `_finishGame()` ordena resultados por score ascendente
+  - Ganador = menor puntuación; empate si varios tienen el mismo score (`winnerId = null`)
+  - Host emite `game-over` con resultados a todos los peers
+  - Peers no-host reciben `GAME_OVER` y emiten el evento local
 
-- [ ] **4.5 Fuente de verdad y anti-trampas**
-  - Decidir modelo: host-authoritative vs. todos validan localmente
-  - Modelo simple (actual): cada peer ejecuta la lógica localmente y confía en los mensajes
-  - Modelo robusto (futuro): el host valida cada jugada antes de aceptarla
-  - Para el hackathon: el modelo simple es suficiente
+- [x] **4.5 Fuente de verdad y anti-trampas**
+  - Modelo simple: cada peer valida su propia jugada localmente y confía en los mensajes
+  - El host envía el `game-over` final autoritativo con el ranking calculado localmente
+  - Suficiente para el hackathon; modelo robusto queda como mejora futura
 
 ---
 
@@ -164,10 +164,12 @@
   - Guardar/recuperar datos de una partida
   - Actualizar estadísticas de jugador (partidas jugadas, ganadas, mejor score)
 
-- [ ] **5.5 Integrar storage en el GameController**
-  - Al acabar una partida, guardar automáticamente el resultado en Hyperbee
-  - Actualizar estadísticas de cada jugador
-  - Registrar eventos durante la partida para tener historial
+- [x] **5.5 Integrar storage en el GameController**
+  - `_initStorage()` crea una Hyperbee local por partida (`matchId` único con `generateId()`)
+  - Eventos registrados: `GAME_START`, `DICE_ROLLED`, `TILES_SHUT`, `TURN_END`, `SHUT_THE_BOX`, `GAME_OVER`
+  - Al acabar: `saveMatch()` guarda resultado final con `winnerId`, `finishedAt` y ranking
+  - `updateStats()` actualiza `gamesPlayed`, `gamesWon`, `totalScore`, `bestScore` para cada jugador
+  - Guest también inicializa su propio storage local al recibir `GAME_START`
 
 - [ ] **5.6 Decidir replicación**
   - Solo local: cada peer guarda su propio historial (más simple)
