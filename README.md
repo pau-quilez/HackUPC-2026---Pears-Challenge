@@ -1,1 +1,57 @@
-# HackUPC-2026---Pears-Challenge
+# HackUPC-2026 - Pears-Challenge
+# 🍐 PearRoom: Decentralized Secure Vault & Gaming Lounge
+
+> **Built for the Pear Protocol Hackathon Challenge**
+> *Eliminating the Central Authority from sensitive data management.*
+
+PearRoom is a completely decentralized, peer-to-peer (P2P) application designed to share encrypted secrets, private notes, and real-time state without relying on "The Cloud". 
+
+To prove the robustness of our multiwriter synchronization and real-time P2P capabilities, we embedded a fully playable **"Shut the Box"** multiplayer game right inside the secure vault. Talk securely, share secrets, and roll the dice—all strictly device-to-device.
+
+---
+
+## ✨ Key Features
+
+* **☁️ Zero-Cloud Architecture:** Absolutely no central servers. Connections are established purely via DHT-based swarming.
+* **🔒 Encrypted Secret Sharing:** Exchange sensitive data and private notes in a secure, peer-to-peer room.
+* **⚡ Real-Time Multiwriter Sync:** Utilizes the Pear Protocol and distributed ledgers to ensure all peers have exactly the same state at the same time.
+* **🎲 "Shut the Box" Proof-of-Concept:** A built-in multiplayer game that serves as a technical showcase for complex, turn-based state synchronization across up to 4 peers.
+
+---
+
+## 🛠️ Tech Stack
+
+This project leverages the recommended tools for the Pear Hackathon track to ensure maximum compatibility and performance:
+
+| Category | Technology Used |
+| :--- | :--- |
+| **Frontend** | React / Tailwind CSS / HTML5 |
+| **P2P & Networking** | Node.js, Pear Protocol, Hyperswarm (DHT-based swarming) |
+| **Data Storage** | Hypercore Protocol (Distributed ledgers) |
+| **Security** | End-to-end encryption for payload data |
+
+---
+
+## 🏗️ Architecture & How It Works
+
+1. **Room Creation (Topic Generation):** When a user creates a room, a unique cryptographic 32-byte key (Topic) is generated. 
+2. **Peer Discovery:** Other users input this Topic. Hyperswarm uses the DHT to find peers announcing this specific Topic and establishes direct, hole-punched connections.
+3. **State Management:** Every action—whether it's sending a secret note or rolling the dice in *Shut the Box*—is appended to a local Hypercore ledger.
+4. **Swarm Synchronization:** The Hypercore protocol automatically replicates these local append-only logs across all connected peers, updating the React UI in real-time.
+
+---
+
+## 🚀 Getting Started
+
+Follow these steps to run PearRoom locally on your machine.
+
+### Prerequisites
+* [Node.js](https://nodejs.org/) (v18 or higher recommended)
+* Pear Runtime (if applicable based on your setup)
+
+### Installation
+
+1. **Clone the repository:**
+   ```bash
+   git clone [https://github.com/your-username/pear-room.git](https://github.com/your-username/pear-room.git)
+   cd pear-room
