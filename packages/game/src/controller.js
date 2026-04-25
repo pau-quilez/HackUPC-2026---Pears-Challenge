@@ -18,7 +18,7 @@ import {
  * Symmetric model: there is NO host. Any player can start the game.
  * All peers validate locally and trust incoming messages.
  *
- * ── EVENTS emitted ───────────────────────────────────────────────────
+ * ── EVENTS ───────────────────────────────────────────────────────────
  *  'connected'        ({ myId })
  *  'lobby-updated'    ({ players })
  *  'player-joined'    ({ player, players })
@@ -37,13 +37,13 @@ import {
  *  'game-aborted'     ({ reason, results })
  *  'error'            ({ message })
  *
- * ── ACTIONS the UI calls ─────────────────────────────────────────────
- *  await controller.connect(name, roomName, mode)   mode = 'create' | 'join'
- *  controller.startGame()       — any player can call
- *  controller.roll()
- *  controller.shutTiles(tiles[])
- *  controller.useHint()         → returns combos[] or null
- *  await controller.destroy()
+ * ── ACTIONS ──────────────────────────────────────────────────────────
+ *  await connect(name, roomName, mode)   mode = 'create' | 'join'
+ *  startGame()
+ *  roll()
+ *  shutTiles(tiles[])
+ *  useHint()  → combos[] | null
+ *  await destroy()
  */
 export class GameController extends EventEmitter {
   constructor () {
@@ -57,29 +57,23 @@ export class GameController extends EventEmitter {
     this.matchId = null
     this._gameEnded = false
 
-    // Storage handles
     this._db = null
     this._dbCore = null
     this._eventLog = null
     this._matchStore = null
 
-    // Async flow resolvers
     this._rollResolve = null
     this._shutResolve = null
     this._opponentResolve = null
     this._startGameResolve = null
-
     this._activeTurn = null
     this._waitingTurnPeerId = null
   }
 
-  // ──────────────────────────────────────────────────────────────────
-  // Public API
-  // ──────────────────────────────────────────────────────────────────
+  // ── Public API ─────────────────────────────────────────────────────
 
   async connect (name, roomName, mode) {
     this.room = new Room(name)
-
     this.room.on('message', (msg) => this._handleMessage(msg))
     this.room.on('peer-disconnected', (peerId) => this._handlePeerDisconnected(peerId))
 
@@ -95,7 +89,6 @@ export class GameController extends EventEmitter {
     this.emit('connected', { myId: this.myId })
     this.emit('lobby-updated', { players: this.players })
 
-    // All players wait in lobby until someone calls startGame()
     await this._lobbyPhase()
   }
 
@@ -110,7 +103,7 @@ export class GameController extends EventEmitter {
       return this.emit('error', { message: `Too many players (max ${MAX_PLAYERS})` })
     }
     if (this._startGameResolve) {
-      this._startGameResolve()
+      this._startGameResolve('local')
       this._startGameResolve = null
     }
   }
@@ -126,7 +119,6 @@ export class GameController extends EventEmitter {
     const me = this._getMyPlayer()
     this.room.broadcast(msgDiceRoll(this.myId, roll))
     this.emit('roll-result', { player: me, roll, isMe: true })
-
     if (this._rollResolve) {
       this._rollResolve(roll)
       this._rollResolve = null
@@ -173,10 +165,6 @@ export class GameController extends EventEmitter {
     }
   }
 
-  // ──────────────────────────────────────────────────────────────────
-  // Read-only state
-  // ──────────────────────────────────────────────────────────────────
-
   get state () {
     return {
       phase: this.phase,
@@ -189,14 +177,11 @@ export class GameController extends EventEmitter {
     }
   }
 
-  // ──────────────────────────────────────────────────────────────────
-  // Internal: helpers
-  // ──────────────────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────
 
   _makePlayer (id, name) {
     return {
-      id,
-      name,
+      id, name,
       openTiles: createBoard(),
       score: 0,
       finished: false,
@@ -205,9 +190,7 @@ export class GameController extends EventEmitter {
     }
   }
 
-  _getMyPlayer () {
-    return this.players.find(p => p.id === this.myId)
-  }
+  _getMyPlayer () { return this.players.find(p => p.id === this.myId) }
 
   _allPlayersFinished () {
     return this.players.every(p => p.finished || p.shutTheBox)
@@ -224,9 +207,7 @@ export class GameController extends EventEmitter {
       .sort((a, b) => a.score - b.score)
   }
 
-  // ──────────────────────────────────────────────────────────────────
-  // Internal: storage
-  // ──────────────────────────────────────────────────────────────────
+  // ── Storage ────────────────────────────────────────────────────────
 
   async _initStorage () {
     this.matchId = generateId()
@@ -245,43 +226,47 @@ export class GameController extends EventEmitter {
     } catch (_) {}
   }
 
-  // ──────────────────────────────────────────────────────────────────
-  // Internal: lobby — symmetric, any player can start
-  // ──────────────────────────────────────────────────────────────────
+  // ── Lobby (symmetric) ─────────────────────────────────────────────
 
   async _lobbyPhase () {
-    await new Promise(resolve => { this._startGameResolve = resolve })
+    const source = await new Promise(resolve => { this._startGameResolve = resolve })
 
-    if (this.phase !== GAME_PHASES.LOBBY) return
+    if (source === 'remote') {
+      // Another peer started — handler already set phase, reordered players
+      // and emitted game-started. Just init storage and start the game loop.
+      await this._initStorage()
+      await this._logEvent('GAME_START', { players: this.players.map(p => ({ id: p.id, name: p.name })) })
+      if (this._matchStore) {
+        await this._matchStore.saveMatch(this.matchId, {
+          players: this.players.map(p => ({ id: p.id, name: p.name })),
+          startedAt: timestamp()
+        })
+      }
+      await this._gameLoop()
+      return
+    }
 
-    // Sort players by ID so every peer has the same turn order
+    // We are the initiator
     this.players.sort((a, b) => a.id.localeCompare(b.id))
-
     this.phase = GAME_PHASES.PLAYING
     this.room.broadcast(msgGameStart(this.myId, {
       players: this.players.map(p => ({ id: p.id, name: p.name })),
       phase: GAME_PHASES.PLAYING
     }))
 
-    await this._startGame()
+    await this._initStorage()
+    await this._logEvent('GAME_START', { players: this.players.map(p => ({ id: p.id, name: p.name })) })
+    if (this._matchStore) {
+      await this._matchStore.saveMatch(this.matchId, {
+        players: this.players.map(p => ({ id: p.id, name: p.name })),
+        startedAt: timestamp()
+      })
+    }
+    this.emit('game-started', { players: this.players, matchId: this.matchId })
     await this._gameLoop()
   }
 
-  async _startGame () {
-    await this._initStorage()
-    await this._matchStore.saveMatch(this.matchId, {
-      players: this.players.map(p => ({ id: p.id, name: p.name })),
-      startedAt: timestamp()
-    })
-    await this._logEvent('GAME_START', {
-      players: this.players.map(p => ({ id: p.id, name: p.name }))
-    })
-    this.emit('game-started', { players: this.players, matchId: this.matchId })
-  }
-
-  // ──────────────────────────────────────────────────────────────────
-  // Internal: game loop
-  // ──────────────────────────────────────────────────────────────────
+  // ── Game loop ──────────────────────────────────────────────────────
 
   async _gameLoop () {
     while (this.phase === GAME_PHASES.PLAYING && !this._allPlayersFinished()) {
@@ -290,7 +275,6 @@ export class GameController extends EventEmitter {
 
       for (let i = 0; i < this.players.length; i++) {
         if (this.phase !== GAME_PHASES.PLAYING) break
-
         this.currentPlayerIndex = i
         const player = this.players[i]
 
@@ -314,19 +298,19 @@ export class GameController extends EventEmitter {
 
     if (this._gameEnded) return
     if (this.phase !== GAME_PHASES.PLAYING && !this._allPlayersFinished()) return
-
     await this._finishGame()
   }
 
-  // ──────────────────────────────────────────────────────────────────
-  // Internal: my turn
-  // ──────────────────────────────────────────────────────────────────
+  // ── My turn ────────────────────────────────────────────────────────
 
   async _playMyTurn (player) {
     this._activeTurn = new Turn(player.openTiles, player.hintsRemaining)
     this.emit('my-turn', { player, round: this.round })
 
     await new Promise(resolve => { this._rollResolve = resolve })
+
+    if (this._gameEnded || !this._activeTurn) return
+
     const roll = this._activeTurn.lastRoll
     await this._logEvent('DICE_ROLLED', { values: roll.values, total: roll.total, count: roll.count })
 
@@ -341,7 +325,10 @@ export class GameController extends EventEmitter {
       return
     }
 
+    this.emit('has-valid-moves', { player })
     await new Promise(resolve => { this._shutResolve = resolve })
+
+    if (this._gameEnded || !this._activeTurn) return
 
     await this._logEvent('TILES_SHUT', { tiles: this._activeTurn.openTiles })
 
@@ -367,9 +354,7 @@ export class GameController extends EventEmitter {
     player.hintsRemaining = result.hintsRemaining
   }
 
-  // ──────────────────────────────────────────────────────────────────
-  // Internal: finish
-  // ──────────────────────────────────────────────────────────────────
+  // ── Finish ─────────────────────────────────────────────────────────
 
   async _finishGame () {
     if (this._gameEnded) return
@@ -377,7 +362,6 @@ export class GameController extends EventEmitter {
     this.phase = GAME_PHASES.FINISHED
 
     const results = this._buildResults()
-
     const winnerScore = results[0].score
     const winners = results.filter(r => r.score === winnerScore)
     const winnerId = winners.length === 1 ? winners[0].id : null
@@ -386,7 +370,6 @@ export class GameController extends EventEmitter {
     if (this._matchStore) {
       await this._matchStore.saveMatch(this.matchId, {
         players: this.players.map(p => ({ id: p.id, name: p.name })),
-        startedAt: timestamp(),
         finishedAt: timestamp(),
         winnerId,
         results
@@ -402,9 +385,7 @@ export class GameController extends EventEmitter {
     await this.destroy()
   }
 
-  // ──────────────────────────────────────────────────────────────────
-  // Internal: peer disconnection (failure tolerance)
-  // ──────────────────────────────────────────────────────────────────
+  // ── Peer disconnect ────────────────────────────────────────────────
 
   _handlePeerDisconnected (peerId) {
     const index = this.players.findIndex(p => p.id === peerId)
@@ -418,18 +399,15 @@ export class GameController extends EventEmitter {
       return
     }
 
-    // Adjust turn pointer if needed
     if (index <= this.currentPlayerIndex && this.currentPlayerIndex > 0) {
       this.currentPlayerIndex--
     }
 
-    // If we were waiting for this peer's turn, skip it
     if (this._waitingTurnPeerId === peerId && this._opponentResolve) {
       this._opponentResolve()
       this._opponentResolve = null
     }
 
-    // If not enough players remain, abort the game
     if (this.phase === GAME_PHASES.PLAYING && this.players.length < MIN_PLAYERS) {
       this._abortDueToDisconnect()
     }
@@ -442,20 +420,14 @@ export class GameController extends EventEmitter {
 
     const results = this._buildResults()
 
-    // Unblock any pending resolvers
     if (this._opponentResolve) { this._opponentResolve(); this._opponentResolve = null }
     if (this._rollResolve) { this._rollResolve(null); this._rollResolve = null }
     if (this._shutResolve) { this._shutResolve(null); this._shutResolve = null }
 
-    this.emit('game-aborted', {
-      reason: `Not enough players (minimum ${MIN_PLAYERS})`,
-      results
-    })
+    this.emit('game-aborted', { reason: `Not enough players (minimum ${MIN_PLAYERS})`, results })
   }
 
-  // ──────────────────────────────────────────────────────────────────
-  // Internal: incoming messages
-  // ──────────────────────────────────────────────────────────────────
+  // ── Incoming messages ──────────────────────────────────────────────
 
   _handleMessage (msg) {
     switch (msg.type) {
@@ -470,40 +442,24 @@ export class GameController extends EventEmitter {
       }
 
       case MSG_TYPES.GAME_START: {
-        if (this.phase === GAME_PHASES.LOBBY) {
-          this.phase = GAME_PHASES.PLAYING
+        if (this.phase !== GAME_PHASES.LOBBY) break
 
-          // Adopt the player order from whoever started the game
-          const serverPlayers = msg.payload.players
-          const ordered = []
-          for (const sp of serverPlayers) {
-            let existing = this.players.find(p => p.id === sp.id)
-            if (!existing) {
-              existing = this._makePlayer(sp.id, sp.name)
-            }
-            ordered.push(existing)
-          }
-          this.players = ordered
+        this.phase = GAME_PHASES.PLAYING
 
-          // Initialize local storage
-          this._initStorage().then(() => {
-            this._matchStore.saveMatch(this.matchId, {
-              players: this.players.map(p => ({ id: p.id, name: p.name })),
-              startedAt: timestamp()
-            })
-            this._logEvent('GAME_START', {
-              players: this.players.map(p => ({ id: p.id, name: p.name }))
-            })
-          })
+        const ordered = []
+        for (const sp of msg.payload.players) {
+          let existing = this.players.find(p => p.id === sp.id)
+          if (!existing) existing = this._makePlayer(sp.id, sp.name)
+          ordered.push(existing)
+        }
+        this.players = ordered
 
-          this.emit('game-started', { players: this.players, matchId: this.matchId })
+        this.emit('game-started', { players: this.players, matchId: null })
 
-          // Resolve lobby wait and start game loop
-          if (this._startGameResolve) {
-            // Prevent the resolver from re-broadcasting game-start
-            this._startGameResolve = null
-          }
-          this._startGame().then(() => this._gameLoop())
+        // Unblock _lobbyPhase — it will init storage and run gameLoop
+        if (this._startGameResolve) {
+          this._startGameResolve('remote')
+          this._startGameResolve = null
         }
         break
       }
@@ -511,9 +467,7 @@ export class GameController extends EventEmitter {
       case MSG_TYPES.DICE_ROLL: {
         if (msg.from !== this.myId) {
           const player = this.players.find(p => p.id === msg.from)
-          if (player) {
-            this.emit('roll-result', { player, roll: msg.payload, isMe: false })
-          }
+          if (player) this.emit('roll-result', { player, roll: msg.payload, isMe: false })
         }
         break
       }

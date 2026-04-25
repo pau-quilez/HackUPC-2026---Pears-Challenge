@@ -1,11 +1,11 @@
 import { EventEmitter } from 'node:events'
 import { SwarmManager } from './swarm.js'
 import { parseMessage, msgPlayerJoin } from './messages.js'
-import { shortId } from '@shut-the-box/shared'
 
 /**
  * A Room manages a group of peers connected to the same topic.
  * It handles player registration and message routing.
+ * Zero I/O — no console.log. All output is via events.
  */
 export class Room extends EventEmitter {
   constructor (playerName, core = null) {
@@ -13,17 +13,13 @@ export class Room extends EventEmitter {
     this.swarm = new SwarmManager(core)
     this.playerName = playerName
     this.players = new Map()
-    this.isHost = false
 
     this.swarm.on('peer-connected', (peerId) => {
-      console.log(`[room] Peer connected: ${shortId(peerId)}`)
       this.broadcast(msgPlayerJoin(this.swarm.publicKey, this.playerName))
       this.emit('peer-connected', peerId)
     })
 
     this.swarm.on('peer-disconnected', (peerId) => {
-      const name = this.players.get(peerId) || shortId(peerId)
-      console.log(`[room] Peer disconnected: ${name}`)
       this.players.delete(peerId)
       this.emit('peer-disconnected', peerId)
     })
@@ -41,20 +37,14 @@ export class Room extends EventEmitter {
   }
 
   async host (roomName) {
-    this.isHost = true
     const topicHex = await this.swarm.join(roomName)
     this.players.set(this.swarm.publicKey, this.playerName)
-    console.log(`[room] Hosting room "${roomName}" (topic: ${shortId(topicHex)})`)
-    console.log(`[room] Your ID: ${shortId(this.swarm.publicKey)}`)
     return topicHex
   }
 
   async join (roomName) {
-    this.isHost = false
     const topicHex = await this.swarm.join(roomName)
     this.players.set(this.swarm.publicKey, this.playerName)
-    console.log(`[room] Joined room "${roomName}" (topic: ${shortId(topicHex)})`)
-    console.log(`[room] Your ID: ${shortId(this.swarm.publicKey)}`)
     return topicHex
   }
 
