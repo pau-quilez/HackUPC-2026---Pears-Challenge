@@ -3,6 +3,7 @@ const app = document.getElementById('app')
 let controller = null
 let runningConnect = false
 let GameControllerClass = null
+const NUM_TILES = 12
 
 const ui = {
 	screen: 'connect',
@@ -382,10 +383,11 @@ function renderLobbyView () {
 
 function renderTiles (player) {
 	const openSet = new Set(player.openTiles)
+	const isMyBoard = player.id === ui.myId
 	const tiles = []
-	for (let i = 1; i <= 9; i++) {
+	for (let i = 1; i <= NUM_TILES; i++) {
 		const open = openSet.has(i)
-		const selected = ui.selectedTiles.includes(i)
+		const selected = isMyBoard && ui.selectedTiles.includes(i)
 		const classes = [
 			'tile',
 			open ? 'open' : 'closed',
