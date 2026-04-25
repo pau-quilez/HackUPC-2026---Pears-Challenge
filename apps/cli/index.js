@@ -15,10 +15,6 @@ import {
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
 const ask = (q) => new Promise(resolve => rl.question(q, resolve))
 
-const args = process.argv.slice(2)
-const isHost = args.includes('--host')
-const isJoin = args.includes('--join')
-
 function printBoard (openTiles) {
   const cells = []
   for (let i = 1; i <= NUM_TILES; i++) {
@@ -35,8 +31,8 @@ function printScoreboard (players) {
   const sorted = [...players].sort((a, b) => a.score - b.score)
   sorted.forEach((p, i) => {
     const medal = i === 0 ? '>>> ' : '    '
-    const stb = p.shutTheBox ? ' (SHUT THE BOX!)' : ''
-    console.log(`${medal}${p.name}: ${p.score} points${stb}`)
+    const shutTheBoxBadge = p.shutTheBox ? ' (SHUT THE BOX!)' : ''
+    console.log(`${medal}${p.name}: ${p.score} points${shutTheBoxBadge}`)
   })
   console.log('------------------\n')
 }
@@ -48,10 +44,7 @@ class GameController {
     this.players = []
     this.currentPlayerIndex = 0
     this.myId = null
-    this.isHost = false
-    this.hostId = null
     this.round = 0
-    this._inHostLobby = false
     this._waitingTurnPeerId = null
     this._waitingTurnResolver = null
     this._gameEnded = false
@@ -63,22 +56,29 @@ class GameController {
 
   async start () {
     const name = await ask('Enter your name: ')
+    
+    console.log('\nOptions:')
+    console.log('1. Create game')
+    console.log('2. Join game')
+    
+    let selectedOption = ''
+    while (selectedOption !== '1' && selectedOption !== '2') {
+      selectedOption = await ask('Choose an option (1 or 2): ')
+    }
+
     const roomName = await ask('Enter room name: ')
 
     this.room = new Room(name)
-    this.isHost = isHost
-
     this.room.on('message', (msg) => this.handleMessage(msg))
     this.room.on('peer-disconnected', (peerId) => this.handlePeerDisconnected(peerId))
 
-    if (isHost) {
+    if (selectedOption === '1') {
       await this.room.host(roomName)
     } else {
       await this.room.join(roomName)
     }
 
     this.myId = this.room.myId
-    this.hostId = this.isHost ? this.myId : null
     this.players.push({
       id: this.myId,
       name,
@@ -89,49 +89,43 @@ class GameController {
       hintsRemaining: MAX_HINTS
     })
 
-    console.log(`\nWaiting for players... (${this.isHost ? 'you are the host' : 'waiting for host to start'})`)
-
-    if (this.isHost) {
-      this._inHostLobby = true
-      try {
-        await this.hostLobby()
-      } finally {
-        this._inHostLobby = false
-      }
-    } else {
-      await this.waitForStart()
-    }
+    await this.sharedLobby()
   }
 
-  async hostLobby () {
+  async sharedLobby () {
+    console.log('\n=== LOBBY ===')
+    console.log('Waiting for players... (Type "start" to begin, or press ENTER to refresh the list)')
+
     while (this.phase === GAME_PHASES.LOBBY) {
-      const totalPlayers = this.players.length
-      console.log(`\nPlayers in room: ${totalPlayers}`)
-      this.players.forEach(p => console.log(`  - ${p.name} (${shortId(p.id)})`))
+      const input = await ask('\nUse "start" command to begin the game: ')
 
-      if (totalPlayers < MIN_PLAYERS) {
-        console.log(`Need at least ${MIN_PLAYERS} players to start.`)
-        await ask('Press Enter to refresh...')
-        continue
-      }
+      // Exit this loop if another player starts the game while we are typing.
+      if (this.phase !== GAME_PHASES.LOBBY) break 
 
-      const answer = await ask(`Start game with ${totalPlayers} players? (y/n): `)
-      if (answer.toLowerCase() === 'y') {
-        this.phase = GAME_PHASES.PLAYING
-        this.room.broadcast(msgGameStart(this.myId, {
-          players: this.players.map(p => ({ id: p.id, name: p.name })),
-          phase: GAME_PHASES.PLAYING
-        }))
-        console.log('\n=== GAME STARTED ===\n')
-        await this.gameLoop()
+      if (input.trim().toLowerCase() === 'start') {
+        if (this.players.length < MIN_PLAYERS) {
+          console.log(`Need at least ${MIN_PLAYERS} players to start! (Current: ${this.players.length})`)
+        } else {
+          this.phase = GAME_PHASES.PLAYING
+          
+          // IMPORTANT: Sort players by ID so everyone has exactly
+          // the same turn order, regardless of join time.
+          this.players.sort((a, b) => a.id.localeCompare(b.id))
+          
+          this.room.broadcast(msgGameStart(this.myId, {
+            players: this.players.map(p => ({ id: p.id, name: p.name })),
+            phase: GAME_PHASES.PLAYING
+          }))
+          
+          console.log('\n=== YOU STARTED THE GAME ===\n')
+          await this.gameLoop()
+        }
+      } else {
+        // Show current lobby state.
+        console.log(`\nPlayers in room (${this.players.length}):`)
+        this.players.forEach(p => console.log(`  - ${p.name} (${shortId(p.id)})`))
       }
     }
-  }
-
-  async waitForStart () {
-    return new Promise((resolve) => {
-      this._startResolve = resolve
-    })
   }
 
   handleMessage (msg) {
@@ -153,27 +147,36 @@ class GameController {
       }
 
       case MSG_TYPES.GAME_START: {
-        this.phase = GAME_PHASES.PLAYING
-        this.hostId = msg.from
-        this.isHost = this.myId === this.hostId
-        const serverPlayers = msg.payload.players
-        for (const sp of serverPlayers) {
-          if (!this.players.find(p => p.id === sp.id)) {
-            this.players.push({
-              id: sp.id,
-              name: sp.name,
-              openTiles: createBoard(),
-              score: 0,
-              finished: false,
-              shutTheBox: false,
-              hintsRemaining: MAX_HINTS
-            })
+        if (this.phase === GAME_PHASES.LOBBY) {
+          this.phase = GAME_PHASES.PLAYING
+          
+          // Use the official player order from whoever pressed 'start'.
+          const serverPlayers = msg.payload.players
+          const newPlayersList = []
+          
+          for (const serverPlayer of serverPlayers) {
+            let existingPlayer = this.players.find(p => p.id === serverPlayer.id)
+            if (!existingPlayer) {
+              existingPlayer = {
+                id: serverPlayer.id,
+                name: serverPlayer.name,
+                openTiles: createBoard(),
+                score: 0,
+                finished: false,
+                shutTheBox: false,
+                hintsRemaining: MAX_HINTS
+              }
+            }
+            newPlayersList.push(existingPlayer)
           }
-        }
-        console.log('\n=== GAME STARTED ===\n')
-        if (this._startResolve) {
-          this._startResolve()
-          this.gameLoop()
+          
+          this.players = newPlayersList
+          console.log('\n\n=== GAME STARTED! (Press ENTER to continue) ===\n')
+          
+          rl.write('\n')
+          
+          // Start the game loop asynchronously.
+          setTimeout(() => this.gameLoop(), 100) 
         }
         break
       }
@@ -209,12 +212,13 @@ class GameController {
             player.finished = msg.payload.finished || false
             player.shutTheBox = msg.payload.shutTheBox
             const name = player.name
+            
             if (msg.payload.shutTheBox) {
               console.log(`\n*** ${name} SHUT THE BOX! Score: 0 ***`)
             } else if (msg.payload.finished) {
-              console.log(`\n${name} has no valid moves. Score so far: ${msg.payload.score}`)
+              console.log(`\n${name} has no valid moves. Current score: ${msg.payload.score}`)
             } else {
-              console.log(`\n${name}'s round ended. Open tiles: [${msg.payload.openTiles.join(', ')}]`)
+              console.log(`\n${name}'s turn ended. Open tiles: [${msg.payload.openTiles.join(', ')}]`)
             }
           }
         }
@@ -222,10 +226,13 @@ class GameController {
       }
 
       case MSG_TYPES.GAME_OVER: {
-        console.log('\n========== GAME OVER ==========')
-        printScoreboard(msg.payload.results)
-        this.phase = GAME_PHASES.FINISHED
-        if (this._waitingTurnResolver) this._waitingTurnResolver()
+        // In a symmetric network, process GAME_OVER if any peer sends it.
+        if (this.phase !== GAME_PHASES.FINISHED) {
+          console.log('\n========== GAME OVER ==========')
+          printScoreboard(msg.payload.results)
+          this.phase = GAME_PHASES.FINISHED
+          if (this._waitingTurnResolver) this._waitingTurnResolver()
+        }
         break
       }
     }
@@ -242,51 +249,13 @@ class GameController {
       this.currentPlayerIndex--
     }
 
-    if (peerId === this.hostId) {
-      this.reassignHost()
-    }
-
     if (this._waitingTurnPeerId === peerId && this._waitingTurnResolver) {
-      console.log('Turn owner disconnected. Skipping turn...')
+      console.log('Current player disconnected. Skipping turn...')
       this._waitingTurnResolver()
-    }
-
-    if (this.phase === GAME_PHASES.LOBBY && this.isHost && !this._inHostLobby) {
-      if (this._startResolve) {
-        this._startResolve()
-        this._startResolve = null
-      }
-      this._inHostLobby = true
-      this.hostLobby()
-        .catch((err) => console.error('Lobby error after host migration:', err))
-        .finally(() => {
-          this._inHostLobby = false
-        })
-      return
     }
 
     if (this.phase === GAME_PHASES.PLAYING && this.players.length < MIN_PLAYERS) {
       this.endDueToInsufficientPlayers()
-    }
-  }
-
-  reassignHost () {
-    if (this.players.length === 0) {
-      this.hostId = null
-      this.isHost = false
-      return
-    }
-
-    const oldHostId = this.hostId
-    const nextHost = [...this.players].sort((a, b) => a.id.localeCompare(b.id))[0]
-    this.hostId = nextHost.id
-    this.isHost = this.myId === this.hostId
-
-    if (oldHostId !== this.hostId) {
-      console.log(`>>> Host disconnected. New host: ${nextHost.name} (${shortId(nextHost.id)})`)
-      if (this.isHost) {
-        console.log('>>> You are now the host.')
-      }
     }
   }
 
@@ -304,7 +273,7 @@ class GameController {
     this._gameEnded = true
     this.phase = GAME_PHASES.FINISHED
 
-    console.log(`\nNot enough players connected (minimum ${MIN_PLAYERS}). Ending game.`)
+    console.log(`\nNot enough players (minimum ${MIN_PLAYERS}). The game has ended.`)
 
     if (this._waitingTurnResolver) {
       this._waitingTurnResolver()
@@ -313,9 +282,6 @@ class GameController {
     const results = this.buildResults()
     if (results.length > 0) {
       printScoreboard(results)
-      if (this.isHost) {
-        this.room.broadcast(msgGameOver(this.myId, results))
-      }
     }
 
     rl.close()
@@ -329,7 +295,7 @@ class GameController {
   }
 
   async gameLoop () {
-    // Rounds continue until all players are finished (no valid moves or shut the box)
+    // Rounds continue until all players are finished or have shut the box.
     while (this.phase === GAME_PHASES.PLAYING && !this.allPlayersFinished()) {
       this.round++
       console.log(`\n========== ROUND ${this.round} ==========`)
@@ -341,7 +307,7 @@ class GameController {
         const player = this.players[i]
 
         if (player.finished || player.shutTheBox) {
-          console.log(`\n${player.name} is already done (score: ${player.score}).`)
+          console.log(`\n${player.name} is already done (Score: ${player.score}).`)
           continue
         }
 
@@ -364,12 +330,9 @@ class GameController {
     this.phase = GAME_PHASES.FINISHED
     const results = this.buildResults()
 
-    if (this.isHost) {
-      this.room.broadcast(msgGameOver(this.myId, results))
-    }
-
     console.log('\n========== GAME OVER ==========')
     printScoreboard(results)
+    
     rl.close()
     this._gameEnded = true
     await this.room.destroy()
@@ -380,7 +343,7 @@ class GameController {
 
     printBoard(turn.openTiles)
 
-    await ask('\nPress Enter to roll dice...')
+    await ask('\nPress ENTER to roll dice...')
     const roll = turn.roll()
     console.log(`\nYou rolled: [${roll.values.join(', ')}] = ${roll.total}`)
     this.room.broadcast(msgDiceRoll(this.myId, roll))
@@ -396,7 +359,7 @@ class GameController {
       return
     }
 
-    console.log(`\n(Type "hint" to reveal valid combinations. Hints remaining: ${turn.hintsRemaining})`)
+    console.log(`\n(Type "hint" to show combinations. Hints left: ${turn.hintsRemaining})`)
 
     let validChoice = false
     while (!validChoice) {
@@ -407,7 +370,7 @@ class GameController {
         if (combos === null) {
           console.log('No hints remaining!')
         } else {
-          console.log(`\nValid combinations (hints left: ${turn.hintsRemaining}):`)
+          console.log(`\nValid combinations (Hints left: ${turn.hintsRemaining}):`)
           combos.forEach((combo, i) => {
             console.log(`  ${i + 1}) [${combo.join(', ')}]`)
           })
@@ -437,7 +400,7 @@ class GameController {
       console.log('\n*** YOU SHUT THE BOX! Score: 0 ***')
       this.room.broadcast(msgTurnEnd(this.myId, { ...result, finished: true }))
     } else {
-      console.log(`\nRound done. Open tiles: [${result.openTiles.join(', ')}] (score so far: ${result.score})`)
+      console.log(`\nTurn finished. Open tiles: [${result.openTiles.join(', ')}] (Current score: ${result.score})`)
       this.room.broadcast(msgTurnEnd(this.myId, { ...result, finished: false }))
     }
   }
@@ -470,16 +433,9 @@ async function main () {
   console.log('║        SHUT THE BOX - P2P Edition         ║')
   console.log('╠═══════════════════════════════════════════╣')
   console.log(`║  Tiles: 1-${NUM_TILES} | Players: 2-4 | ${MAX_HINTS} hints    ║`)
-  console.log('║  1 roll per round, shut tiles, lowest wins ║')
+  console.log('║  1 roll per round, shut tiles and win      ║')
   console.log('╚═══════════════════════════════════════════╝')
   console.log()
-
-  if (!isHost && !isJoin) {
-    console.log('Usage:')
-    console.log('  Host a game:   node apps/cli/index.js --host')
-    console.log('  Join a game:   node apps/cli/index.js --join')
-    process.exit(1)
-  }
 
   const game = new GameController()
   await game.start()
