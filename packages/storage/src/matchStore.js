@@ -8,11 +8,11 @@ export class MatchStore {
   async saveMatch (matchId, data) {
     await this.db.put(matchKey(matchId), data)
   }
-  
+
   async getMatch (matchId) {
   const entry = await this.db.get(matchKey(matchId))
-  return entry ? entry.value : null  // FIXED: handle null entry
-  }
+  return entry ? entry.value : null  // return null, not undefined
+}
   
 
   async updateStats (playerId, score, won) {
